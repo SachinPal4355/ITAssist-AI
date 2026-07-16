@@ -185,7 +185,7 @@ st.markdown(
         <span style="font-size:18px; font-weight:700; color:#ececec;">🤖 ITAssist AI</span>
         <span style="font-size:12px; color:#b4b4b4; margin-left:10px; margin-top:2px;">Service Desk Copilot</span>
         <span style="flex:1;"></span>
-        <span style="font-size:12px; color:#b4b4b4; margin-right:6px;">Signed in as <b>Sachin</b></span>
+        <span style="font-size:12px; color:#b4b4b4; margin-right:6px;">Signed in as <b>User</b></span>
     </div>
     """,
     unsafe_allow_html=True,

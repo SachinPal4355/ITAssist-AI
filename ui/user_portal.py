@@ -296,11 +296,6 @@ def render_user_portal(username: str):
 
     # ── RIGHT COLUMN — AI Console + Asset Request ─────────────────────────────
     with col_right:
-        render_page_header(
-            "⚡ AI Console",
-            f"Signed in as {username}",
-        )
-
         stage = st.session_state.portal_stage
         is_live = stage in ["classifying", "generating_resolution"]
         badge = "<span style='background:#10b981;color:white;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;'>🟢 LIVE</span>" if is_live else "<span style='background:#3f3f3f;color:#b4b4b4;font-size:10px;padding:2px 7px;border-radius:10px;'>⚪ IDLE</span>"
@@ -839,6 +834,7 @@ def _render_ticket_preview_inline(username: str):
             f"""<div style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
                 <div style="color:#94a3b8; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Severity · Confidence</div>
                 <div style="font-size:15px; font-weight:700; margin-top:4px;">
+                    <span style="font-size:12px; color:#b4b4b4; margin-right:6px;">Signed in as <b>{username}</b></span>
                     <span style="color:{sev_color};">⚠ {sev}</span>
                     <span style="color:#10a37f; margin-left:12px;">{conf:.0%}</span>
                 </div>
