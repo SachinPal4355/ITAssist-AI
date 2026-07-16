@@ -405,20 +405,24 @@ def _render_idle_stage(username: str):
             _log(f"📎 Reading {len(uploaded_files)} attached file(s)...")
             from utils.file_reader import extract_text_from_file, semantic_search_in_doc, strip_pii_patterns
             parts = []
+            full_parts = []
             for f in uploaded_files:
                 raw_text, method = extract_text_from_file(f)
                 if method == "image":
                     _log(f"🖼️ Vision AI processed: {f.name}")
                 else:
                     _log(f"📄 Extracted text from: {f.name}")
-                # Strip obvious PII before Guardian sees it
+                # Strip obvious PII before validation
                 clean_text = strip_pii_patterns(raw_text)
-                # Semantic search: find the most relevant chunks for the user query
+                # Save full file content for complete guardrail validation
+                full_parts.append(f"[{f.name} - Full Content]:\n{clean_text}")
+                # Semantic search: find the most relevant chunks for user query processing
                 relevant = semantic_search_in_doc(user_input.strip(), clean_text, top_k=3)
                 if relevant:
                     parts.append(f"[{f.name}]:\n{relevant}")
             attached_context = "\n\n".join(parts)
             st.session_state.attached_files_context = attached_context
+            st.session_state.full_uploaded_text = "\n\n".join(full_parts)
             _log("✅ File context ready")
 
         _add_chat("user", user_input.strip())
@@ -454,7 +458,7 @@ def _render_classifying_stage(username: str):
         guard = guardrail_check(
             user_issue=user_message,
             local_rag_context=local_context,
-            attached_doc_context=attached_context,
+            attached_doc_context=st.session_state.get("full_uploaded_text", ""),
         )
 
         if not guard.safe:
@@ -568,6 +572,28 @@ def _render_generating_resolution_stage():
         st.session_state.portal_stage = "idle"
         st.rerun()
         return
+
+    user_answers = st.session_state.get("user_answers_input", "")
+
+    # ── Safety Guardrail Validation on Diagnostic Answers ──
+    with st.spinner("🛡️ Guardrail checking safety of answers..."):
+        _log("🛡️ Guardrail scanning user answers...")
+        from utils.guardrail import guardrail_check
+        guard = guardrail_check(user_issue=user_answers)
+        
+        if not guard.safe:
+            _log(f"🚫 Guardrail BLOCKED answers: {guard.reason[:60]}")
+            st.error(
+                f"🛡️ **Guardrail blocked this request**\n\n"
+                f"**Reason:** {guard.reason}\n\n"
+                f"Please review your answers and remove any off-topic or sensitive content."
+            )
+            # Revert back to answering stage to allow correction
+            st.session_state.portal_stage = "answering_questions"
+            st.rerun()
+            return
+            
+        _log("✅ Guardrail: Answers cleared")
 
     with st.spinner("🔧 Generating final step-by-step troubleshooting suggestions..."):
         try:
