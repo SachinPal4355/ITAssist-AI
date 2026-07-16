@@ -1,13 +1,4 @@
-"""
-Agent 4: Resolution Agent
-Responsibility:
-  - Generate step-by-step resolution instructions
-  - Generate OS-specific PowerShell / CMD scripts
-  - Draft resolution summary for IT engineer
 
-Input:  ticket data, root cause analysis, sop_context
-Output: {"resolution_steps": list, "script": str, "script_type": str, "summary": str}
-"""
 import json
 import re
 from langchain_groq import ChatGroq
@@ -301,7 +292,6 @@ Get-WinEvent -LogName System -MaxEvents 10 | Where-Object {$_.Level -le 2} | Sel
             "Step 6: If Error 691: verify AD account is not locked — check with AD admin",
         ],
     }
-
     return {
         "resolution_steps": steps_map.get(
             category,
@@ -319,3 +309,45 @@ Get-WinEvent -LogName System -MaxEvents 10 | Where-Object {$_.Level -le 2} | Sel
         "estimated_time": "20-30 minutes",
         "escalation_needed": severity in ["High", "Critical"],
     }
+
+
+def draft_knowledge_article(issue_summary: str, old_solution: str, engineer_notes: str) -> str:
+    """
+    Draft a professional Knowledge Base / SOP article using the LLM.
+    Combines the original issue, the AI's old solution, and the engineer's edits.
+    """
+    system_prompt = """You are an expert IT Technical Writer.
+Your job is to draft a professional, concise, and accurate Knowledge Base (SOP) article.
+You will be provided with:
+1. The original issue summary.
+2. The initial AI-recommended solution.
+3. The IT Engineer's custom notes/modifications to that solution.
+
+INSTRUCTIONS:
+- Write a clean, step-by-step resolution guide.
+- Incorporate the IT Engineer's notes as the primary source of truth (override the AI solution if they conflict).
+- Use professional formatting (Markdown).
+- Include a "Symptoms/Issue" section and a "Resolution Steps" section.
+- If there are scripts/commands in the notes or AI solution, include them in a code block.
+- DO NOT include conversational filler like "Here is the article" or "Let me know if you need changes." Just output the markdown article content directly.
+"""
+    user_prompt = f"""
+--- ORIGINAL ISSUE ---
+{issue_summary}
+
+--- INITIAL AI SOLUTION ---
+{old_solution}
+
+--- IT ENGINEER'S NOTES/EDITS ---
+{engineer_notes}
+"""
+    llm = _build_llm()
+    try:
+        response = llm.invoke([
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ])
+        return response.content.strip()
+    except Exception as e:
+        print(f"Error drafting knowledge article: {e}")
+        return f"# Resolution for: {issue_summary}\n\n## Engineer Notes\n{engineer_notes}"

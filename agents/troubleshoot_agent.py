@@ -1,13 +1,4 @@
-"""
-Agent 3: Troubleshooting Agent
-Responsibility:
-  Phase A - Generate 2-3 targeted diagnostic questions based on category + SOP context
-  Phase B - After user answers: analyze root cause, severity, confidence
 
-Input:  category, user_message, sop_context, user_answers (list)
-Output: Phase A → {"questions": list[str]}
-        Phase B → {"problem": str, "probable_cause": str, "severity": str, "confidence": float, "analysis": str}
-"""
 import json
 import re
 from langchain_groq import ChatGroq

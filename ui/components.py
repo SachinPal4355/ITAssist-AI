@@ -21,17 +21,17 @@ STATUS_COLORS = {
 }
 
 CATEGORY_ICONS = {
-    "Performance": "⚡",
-    "VPN / Remote Access": "🔒",
-    "Network": "🌐",
-    "Email": "📧",
-    "Access / Permissions": "🔑",
-    "Software": "💿",
-    "Hardware": "🖥️",
-    "Backup / Storage": "💾",
-    "Printer": "🖨️",
-    "Security / BitLocker": "🛡️",
-    "Other": "❓",
+    "Performance": "",
+    "VPN / Remote Access": "",
+    "Network": "",
+    "Email": "",
+    "Access / Permissions": "",
+    "Software": "",
+    "Hardware": "",
+    "Backup / Storage": "",
+    "Printer": "",
+    "Security / BitLocker": "",
+    "Other": "",
 }
 
 
@@ -53,7 +53,7 @@ def render_chat_message(role: str, content: str, agent_step: str = ""):
                 ">
                     {content}
                 </div>
-                <div style="margin-left: 8px; font-size: 20px; padding-top: 4px;">👤</div>
+                <div style="margin-left: 8px; font-size: 20px; padding-top: 4px;"></div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -65,7 +65,7 @@ def render_chat_message(role: str, content: str, agent_step: str = ""):
         st.markdown(
             f"""
             <div style="display: flex; margin: 12px 0; align-items: flex-start;">
-                <div style="margin-right: 8px; font-size: 20px; padding-top: 4px;">🤖</div>
+                <div style="margin-right: 8px; font-size: 20px; padding-top: 4px;"></div>
                 <div style="
                     background: transparent; color: #ececec;
                     padding: 4px 12px;
@@ -81,7 +81,7 @@ def render_chat_message(role: str, content: str, agent_step: str = ""):
 
 # ── Metric Card ───────────────────────────────────────────────────────────────
 
-def render_metric_card(label: str, value, icon: str = "📊", color: str = "#10a37f", delta: str = ""):
+def render_metric_card(label: str, value, icon: str = "", color: str = "#10a37f", delta: str = ""):
     """Render a clean minimal metric card."""
     delta_html = f'<div style="font-size:12px; color:#b4b4b4; margin-top:4px;">{delta}</div>' if delta else ""
     st.markdown(
@@ -107,12 +107,12 @@ def render_agent_step(step_name: str, active: bool = False):
     """Show which agent is currently active."""
     steps = ["intake", "knowledge", "ask_questions", "analyze", "generate_resolution", "complete"]
     labels = {
-        "intake": "🔍 Intake Agent",
-        "knowledge": "📚 Knowledge Agent",
-        "ask_questions": "❓ Troubleshoot Agent",
-        "analyze": "🧪 Analysis",
-        "generate_resolution": "🔧 Resolution Agent",
-        "complete": "✅ Complete",
+        "intake": " Intake Agent",
+        "knowledge": " Knowledge Agent",
+        "ask_questions": " Troubleshoot Agent",
+        "analyze": " Analysis",
+        "generate_resolution": " Resolution Agent",
+        "complete": " Complete",
     }
     cols = st.columns(len(steps))
     for i, step in enumerate(steps):
@@ -144,7 +144,7 @@ def render_ticket_card(ticket: dict, compact: bool = False):
     """Render a full or compact ticket card."""
     sev_color = SEVERITY_COLORS.get(ticket.get("severity", "Medium"), "#f59e0b")
     status_color = STATUS_COLORS.get(ticket.get("status", "Open"), "#3b82f6")
-    cat_icon = CATEGORY_ICONS.get(ticket.get("category", "Other"), "❓")
+    cat_icon = CATEGORY_ICONS.get(ticket.get("category", "Other"), "")
     confidence = ticket.get("confidence", 0.0)
 
     if compact:
@@ -167,9 +167,9 @@ def render_ticket_card(ticket: dict, compact: bool = False):
                     {ticket.get('issue_summary', '')[:80]}...
                 </div>
                 <div style="display:flex; gap:12px; margin-top:8px;">
-                    <span style="color:{sev_color}; font-size:12px;">⚠ {ticket.get('severity', 'Medium')}</span>
-                    <span style="color:#b4b4b4; font-size:12px;">👤 {ticket.get('username', '')}</span>
-                    <span style="color:#b4b4b4; font-size:12px;">🕒 {ticket.get('created_at', '')}</span>
+                    <span style="color:{sev_color}; font-size:12px;"> {ticket.get('severity', 'Medium')}</span>
+                    <span style="color:#b4b4b4; font-size:12px;"> {ticket.get('username', '')}</span>
+                    <span style="color:#b4b4b4; font-size:12px;"> {ticket.get('created_at', '')}</span>
                 </div>
             </div>
             """,
@@ -189,12 +189,12 @@ def render_ticket_card(ticket: dict, compact: bool = False):
                             {cat_icon} {ticket.get('ticket_id', '')}
                         </div>
                         <div style="color:#b4b4b4; font-size:13px; margin-top:4px;">
-                            {ticket.get('category', '')} | 👤 {ticket.get('username', '')} | 🕒 {ticket.get('created_at', '')}
+                            {ticket.get('category', '')} |  {ticket.get('username', '')} |  {ticket.get('created_at', '')}
                         </div>
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
                         <span style="background:{sev_color}22; color:{sev_color}; padding:4px 12px; border-radius:20px; border:1px solid {sev_color}; font-size:12px; font-weight:600;">
-                            ⚠ {ticket.get('severity', 'Medium')}
+                             {ticket.get('severity', 'Medium')}
                         </span>
                         <span style="background:{status_color}22; color:{status_color}; padding:4px 12px; border-radius:20px; border:1px solid {status_color}; font-size:12px; font-weight:600;">
                             {ticket.get('status', 'Open')}
@@ -225,7 +225,7 @@ def render_ticket_card(ticket: dict, compact: bool = False):
 
 # ── Info Banner ───────────────────────────────────────────────────────────────
 
-def render_info_banner(title: str, content: str, color: str = "#10a37f", icon: str = "ℹ️"):
+def render_info_banner(title: str, content: str, color: str = "#10a37f", icon: str = ""):
     st.markdown(
         f"""
         <div style="
@@ -272,7 +272,7 @@ def render_script_block(script: str, script_type: str = "PowerShell"):
     """Render syntax-highlighted script with copy note."""
     lang = "powershell" if "PowerShell" in script_type else "bash"
     st.markdown(
-        f'<div style="color:#b4b4b4; font-size:12px; margin-bottom:4px;">📋 {script_type} Script — Copy and run as Administrator</div>',
+        f'<div style="color:#b4b4b4; font-size:12px; margin-bottom:4px;"> {script_type} Script — Copy and run as Administrator</div>',
         unsafe_allow_html=True,
     )
     st.code(script, language=lang)

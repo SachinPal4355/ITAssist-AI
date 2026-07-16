@@ -331,3 +331,43 @@ def get_all_knowledge_articles() -> list[dict]:
             }
             for a in arts
         ]
+
+
+def approve_and_save_solution(ticket_id: str, title: str, category: str, content: str) -> str:
+    """Save approved ticket resolution as a Knowledge Base article and resolve the ticket."""
+    import os
+    from config.settings import SOP_DOCS_PATH
+    
+    # 1. Update ticket status
+    with get_session() as session:
+        t = session.query(Ticket).filter_by(ticket_id=ticket_id).first()
+        if t:
+            t.status = TicketStatus.RESOLVED
+            t.resolution_notes = content
+            t.updated_at = datetime.utcnow()
+            
+    # 2. Save text file
+    filename = f"resolved_ticket_{ticket_id}.txt"
+    filepath = os.path.join(SOP_DOCS_PATH, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+        
+    # 3. Add to knowledge_articles table
+    with get_session() as session:
+        article = KnowledgeArticle(
+            title=title,
+            filename=filename,
+            category=category,
+            source_url=f"internal://ticket/{ticket_id}",
+            content_preview=content[:200] + "..." if len(content) > 200 else content,
+        )
+        session.add(article)
+        
+    # 4. Inject into active FAISS index for immediate RAG retrieval
+    try:
+        from rag.retriever import add_to_faiss_index
+        add_to_faiss_index(filepath, content)
+    except Exception as e:
+        print(f"Failed to inject solution into FAISS index: {e}")
+        
+    return filepath

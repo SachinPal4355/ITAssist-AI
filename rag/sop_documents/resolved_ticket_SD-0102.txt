@@ -1,0 +1,71 @@
+# Keyboard Not Working After Login
+=====================================
+
+### Symptoms/Issue
+
+* Keyboard is not functioning after logging in to the system
+* Keyboard works on the login screen but stops working after successful login
+
+### Resolution Steps
+
+1. **Run Keyboard Troubleshooter**
+   Run the built-in keyboard troubleshooter using the following command:
+   ```bash
+msdt.exe -id KeyboardDiagnostic
+```
+   This will scan the system for any issues related to the keyboard and provide a solution or workaround.
+
+2. **Boot into Safe Mode**
+   If the keyboard works on the login screen but not after, boot the system into Safe Mode to isolate the issue.
+   * Restart the system and press the F8 key repeatedly to access the Advanced Boot Options menu.
+   * Select Safe Mode from the list of options and press Enter.
+
+3. **Check Power Configuration**
+   Use the `powercfg` command to check the power configuration:
+   ```bash
+powercfg /list
+```
+   This will display a list of power plans and their current settings.
+
+4. **Generate Battery Report**
+   Generate a battery report using the following command:
+   ```bash
+powercfg /batteryreport /output C:\Temp\battery_report.html
+```
+   This will create a report detailing the battery's health and usage patterns.
+
+5. **Check Available Sleep States**
+   Use the `powercfg` command to check the available sleep states:
+   ```bash
+powercfg /a
+```
+   This will display a list of available sleep states and their current settings.
+
+6. **Check What is Preventing Sleep**
+   Use the `powercfg` command to check what is preventing the system from sleeping:
+   ```bash
+powercfg /requests
+```
+   This will display a list of devices or applications that are preventing the system from sleeping.
+
+7. **Check Devices that Can Wake PC**
+   Use the `powercfg` command to check which devices can wake the system:
+   ```bash
+powercfg /devicequery wake_armed
+```
+   This will display a list of devices that can wake the system.
+
+8. **List Devices that Recently Woke PC**
+   Use the `powercfg` command to list devices that recently woke the system:
+   ```bash
+powercfg /lastwake
+```
+   This will display a list of devices that recently woke the system.
+
+9. **Disable Wake Timers in Power Options**
+   Disable wake timers in Power Options to prevent the system from waking up unnecessarily.
+
+10. **Disable Network Adapter from Waking PC in Device Manager**
+    Disable the network adapter from waking the system in Device Manager to prevent the system from waking up unnecessarily.
+
+Note: The IT Engineer's notes were incomplete, so the article has been completed based on the provided information.

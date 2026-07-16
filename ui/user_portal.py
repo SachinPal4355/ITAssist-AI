@@ -92,11 +92,11 @@ def _render_console_logs_html(logs) -> str:
 
 def _log(msg: str):
     ts = datetime.now().strftime("%H:%M:%S")
-    agent = "⚙️ System Agent"
+    agent = " System Agent"
     detail = msg
 
     if "Guardrail" in msg or "guardrail" in msg:
-        agent = "🛡️ Safety Guardrail Agent"
+        agent = " Safety Guardrail Agent"
         if "scanning" in msg.lower():
             detail = f"<b>Doing:</b> Running Relevance Classifier, Safety Validation, Moderation, and Safety Classification checks..."
         elif "BLOCKED" in msg:
@@ -104,46 +104,46 @@ def _log(msg: str):
         elif "cleared" in msg.lower() or "passed" in msg.lower():
             detail = "<b>Found:</b> All guardrail checks passed. Content is safe to process."
     elif "FAISS" in msg or "knowledge base" in msg.lower():
-        agent = "🔍 RAG Search Agent"
+        agent = " RAG Search Agent"
         if "Scanning" in msg:
             detail = "<b>Doing:</b> Performing semantic search across Microsoft Windows troubleshooting knowledge base..."
         elif "Matched" in msg:
-            detail = f"<b>Found:</b> {msg.replace('📄', '').strip()}"
+            detail = f"<b>Found:</b> {msg.replace('', '').strip()}"
         else:
-            detail = f"<b>Info:</b> {msg.replace('📄', '').strip()}"
+            detail = f"<b>Info:</b> {msg.replace('', '').strip()}"
     elif "Classified" in msg or "classification" in msg.lower():
-        agent = "🏷️ Triage Agent"
-        detail = f"<b>Found:</b> {msg.replace('📊', '').strip()}"
+        agent = " Triage Agent"
+        detail = f"<b>Found:</b> {msg.replace('', '').strip()}"
     elif "Groq" in msg or "classification" in msg.lower() or "cross-questions" in msg.lower():
-        agent = "🏷️ Triage Agent"
+        agent = " Triage Agent"
         detail = f"<b>Doing:</b> Calling Groq API (LLaMA-3.1) to classify issue category and check for existing context..."
     elif "Cross-questions" in msg or "cross-question" in msg.lower():
-        agent = "❓ Cross-Question Agent"
+        agent = " Cross-Question Agent"
         detail = "<b>Doing:</b> Clarifying: Generating diagnostic verification questions for user response..."
     elif "Final resolution" in msg or "step-by-step" in msg.lower():
-        agent = "🔧 Resolution Agent"
+        agent = " Resolution Agent"
         detail = "<b>Found:</b> Step-by-step resolution recommendations and scripts generated successfully!"
     elif "Writing session" in msg:
-        agent = "🔧 Resolution Agent"
+        agent = " Resolution Agent"
         detail = "<b>Doing:</b> Compiling findings and writing to session_finding.txt state file..."
-    elif "inventory" in msg.lower() or "📦" in msg:
-        agent = "⚙️ System Agent"
-        detail = f"<b>Doing:</b> {msg.replace('📦', '').strip()}"
+    elif "inventory" in msg.lower() or "" in msg:
+        agent = " System Agent"
+        detail = f"<b>Doing:</b> {msg.replace('', '').strip()}"
     elif "Ticket" in msg and "created" in msg.lower():
-        agent = "⚙️ System Agent"
-        detail = f"<b>Done:</b> {msg.replace('🎫', '').replace('✅', '').strip()}"
-    elif "Reading" in msg or "📎" in msg:
-        agent = "📁 Ingestion Agent"
+        agent = " System Agent"
+        detail = f"<b>Done:</b> {msg.replace('', '').replace('', '').strip()}"
+    elif "Reading" in msg or "" in msg:
+        agent = " Ingestion Agent"
         detail = "<b>Doing:</b> Accessing uploaded attachments to extract context..."
     elif "Vision AI" in msg:
-        agent = "📁 Ingestion Agent"
+        agent = " Ingestion Agent"
         filename = msg.split("processed:")[-1].strip() if "processed:" in msg else ""
         detail = f"<b>Converting:</b> Extracted visual elements of <b>{filename}</b> using Vision API."
     elif "File context" in msg:
-        agent = "📁 Ingestion Agent"
+        agent = " Ingestion Agent"
         detail = "<b>Found:</b> Ingested text context successfully loaded into working memory."
     elif "error" in msg.lower() or "failed" in msg.lower():
-        agent = "⚠️ System Diagnostics"
+        agent = " System Diagnostics"
         detail = f"<b>Error:</b> {msg}"
 
     st.session_state.console_logs.append({
@@ -156,9 +156,9 @@ def _log(msg: str):
         badge = st.session_state.get("console_badge", "")
         log_html = _render_console_logs_html(st.session_state.console_logs)
         console_html = f"""
-        <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:16px; height:360px; overflow-y:auto;">
+        <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:14px; height:180px; overflow-y:auto;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #2f2f2f; padding-bottom:8px;">
-                <span style="color:#ececec; font-weight:700; font-size:14px; font-family:monospace;">⚡ AI Console</span>
+                <span style="color:#ececec; font-weight:700; font-size:14px; font-family:monospace;"> AI Console</span>
                 {badge}
             </div>
             <div style="line-height:1.5;">
@@ -263,25 +263,25 @@ def _extract_and_cache_files(uploaded_files):
 
         # Add vision description as a chat message so it appears inline
         if method == "image":
-            conf_color = "🟢" if confidence >= 50 else "🔴"
+            conf_color = "" if confidence >= 50 else ""
             conf_label = f"{conf_color} Vision AI ({confidence}% confidence)"
             if confidence < 50:
                 vision_msg = (
-                    f"📎 **Attached:** `{f.name}`\n\n"
-                    f"⚠️ **Low Confidence ({confidence}%)** — The image is unclear or blurry. "
+                    f" **Attached:** `{f.name}`\n\n"
+                    f" **Low Confidence ({confidence}%)** — The image is unclear or blurry. "
                     f"Please attach a clearer screenshot of your issue for better analysis."
                 )
             else:
                 vision_msg = (
-                    f"📎 **Attached:** `{f.name}` — {conf_label}\n\n"
+                    f" **Attached:** `{f.name}` — {conf_label}\n\n"
                     f"**What I see in the image:** {clean_text[:400]}{'...' if len(clean_text) > 400 else ''}"
                 )
-            _add_chat("assistant", vision_msg, agent_step="👁️ Vision AI")
+            _add_chat("assistant", vision_msg, agent_step=" Vision AI")
         else:
             _add_chat(
                 "assistant",
-                f"📎 **Attached:** `{f.name}` — {len(clean_text)} characters extracted and ready for analysis.",
-                agent_step="📁 Document Reader"
+                f" **Attached:** `{f.name}` — {len(clean_text)} characters extracted and ready for analysis.",
+                agent_step=" Document Reader"
             )
 
 
@@ -298,15 +298,15 @@ def render_user_portal(username: str):
     with col_right:
         stage = st.session_state.portal_stage
         is_live = stage in ["classifying", "generating_resolution"]
-        badge = "<span style='background:#10b981;color:white;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;'>🟢 LIVE</span>" if is_live else "<span style='background:#3f3f3f;color:#b4b4b4;font-size:10px;padding:2px 7px;border-radius:10px;'>⚪ IDLE</span>"
+        badge = "<span style='background:#10b981;color:white;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;'> LIVE</span>" if is_live else "<span style='background:#3f3f3f;color:#b4b4b4;font-size:10px;padding:2px 7px;border-radius:10px;'> IDLE</span>"
 
         console_placeholder = st.empty()
         logs = st.session_state.get("console_logs", [])
         log_html = _render_console_logs_html(logs)
         console_html = f"""
-        <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:16px; height:360px; overflow-y:auto;">
+        <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:14px; height:180px; overflow-y:auto;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #2f2f2f; padding-bottom:8px;">
-                <span style="color:#ececec; font-weight:700; font-size:14px; font-family:monospace;">⚡ AI Console</span>
+                <span style="color:#ececec; font-weight:700; font-size:14px; font-family:monospace;"> AI Console</span>
                 {badge}
             </div>
             <div style="line-height:1.5;">
@@ -324,17 +324,18 @@ def render_user_portal(username: str):
             """
             <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:14px 16px 8px 16px; margin-bottom:8px;">
                 <div style="color:#ececec; font-weight:700; font-size:13px; font-family:monospace; border-bottom:1px solid #2f2f2f; padding-bottom:6px; margin-bottom:12px;">
-                    📦 Request IT Asset
+                     Request IT Asset
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        asset_name = st.selectbox(
-            "Select Asset:",
-            ["Dell XPS 15", "MacBook Pro", "UltraWide 34 Monitor", "Logitech Headset", "Microsoft Office Suite License"],
-            key="asset_select_box",
+        asset_name = st.text_input(
+            "Asset Name:",
+            value=st.session_state.get("asset_name_input", ""),
+            placeholder="e.g. Dell XPS 15, MacBook Pro, Headset...",
+            key="asset_name_input",
             label_visibility="collapsed"
         )
         manager_name = st.text_input(
@@ -353,7 +354,9 @@ def render_user_portal(username: str):
         )
 
         if st.button("Submit Asset Request", type="primary", use_container_width=True, key="submit_asset_req"):
-            if not justification.strip():
+            if not asset_name.strip():
+                st.error("Please enter the asset name.")
+            elif not justification.strip():
                 st.error("Please provide a justification.")
             elif not manager_name.strip():
                 st.error("Please enter manager name.")
@@ -362,30 +365,23 @@ def render_user_portal(username: str):
                 is_matched, match_reason = check_asset_match(asset_name, justification.strip())
                 if not is_matched:
                     st.error(
-                        f"⚠️ **Asset Mismatch** — Your justification doesn't match **{asset_name}**.\n\n"
+                        f" **Asset Mismatch** — Your justification doesn't match **{asset_name}**.\n\n"
                         f"{match_reason}\n\nPlease correct the asset or justification."
                     )
                 else:
-                    _log("🛡️ Guardrail scanning asset request...")
+                    _log(" Guardrail scanning asset request...")
                     from utils.guardrail import guardrail_check
                     guard = guardrail_check(
                         user_issue=f"Asset Request: {asset_name}. Justification: {justification.strip()}",
                         attached_doc_context=f"Manager: {manager_name.strip()}"
                     )
                     if not guard.safe:
-                        st.error(f"🛡️ Guardrail blocked: {guard.reason}")
+                        st.error(f" Guardrail blocked: {guard.reason}")
                     else:
-                        _log("✅ Guardrail: Content cleared")
-                        INVENTORY = {
-                            "Dell XPS 15": "In Stock",
-                            "MacBook Pro": "Out of Stock",
-                            "UltraWide 34 Monitor": "In Stock",
-                            "Logitech Headset": "In Stock",
-                            "Microsoft Office Suite License": "In Stock"
-                        }
-                        stock = INVENTORY.get(asset_name, "In Stock")
-                        _log(f"📦 Check inventory: {asset_name} ({stock})")
-                        _log("🎫 Creating asset request ticket...")
+                        _log(" Guardrail: Content cleared")
+                        stock = "Pending Review"
+                        _log(f" Asset requested: {asset_name} — {stock}")
+                        _log(" Creating asset request ticket...")
                         from database.crud import get_session, get_or_create_user as _gcu
                         from database.models import Ticket
                         import random
@@ -403,44 +399,53 @@ def render_user_portal(username: str):
                                 status="Pending Manager Approval",
                                 questions_asked=0, resolution_notes="No email drafted"
                             ))
-                        _log(f"✅ Ticket {tid} created (Pending Manager Approval)")
-                        st.success(f"🎉 Ticket **{tid}** created — Pending Manager Approval")
+                        _log(f" Ticket {tid} created (Pending Manager Approval)")
+                        st.success(f" Ticket **{tid}** created — Pending Manager Approval")
                         _add_chat("user", f"I submitted an asset request for {asset_name}.")
                         _add_chat(
                             "assistant",
-                            f"✅ **Asset Request Submitted!**\n\n"
+                            f" **Asset Request Submitted!**\n\n"
                             f"- **Asset:** {asset_name}\n"
                             f"- **Manager:** {manager_name.strip()}\n"
                             f"- **Stock Status:** {stock}\n"
                             f"- **Ticket:** {tid} — Pending Manager Approval",
-                            agent_step="📦 Asset Request"
+                            agent_step=" Asset Request"
                         )
+                        st.session_state.pop("asset_name_input", None)
                         st.rerun()
 
     # ── LEFT COLUMN — Chat Interface ──────────────────────────────────────────
     with col_left:
-        render_page_header(
-            "🤖 ITAssist AI — Service Desk Copilot",
-            f"Welcome, {username} · Powered by Groq LLaMA-3 + RAG (Microsoft Windows Docs)",
-        )
 
         if not is_index_ready():
             st.warning(
-                "⚠️ **Knowledge Base Not Built Yet** — Run `python rag/ingest.py` to build the FAISS index.",
-                icon="⚠️",
+                " **Knowledge Base Not Built Yet** — Run `python rag/ingest.py` to build the FAISS index.",
+                icon=None,
             )
 
-        # ── Chat scroll area ──────────────────────────────────────────────────
-        # Use a container that grows naturally — Streamlit auto-scrolls to bottom
-        chat_area = st.container()
+        # -- Chat scroll area: 320px fills ~44% of viewport, input bar below --
+        # Nav (52px) + Chat (320px) + divider+shortcuts+attach+input+btns (~340px) = 712px ✓
+        chat_area = st.container(height=320, border=False)
         with chat_area:
+            if not st.session_state.chat_history:
+                st.markdown(
+                    """
+                    <div style="display:flex; flex-direction:column; align-items:center;
+                                justify-content:center; height:260px; color:#4f4f4f; text-align:center;">
+                        <div style="font-size:40px; margin-bottom:12px;"></div>
+                        <div style="font-size:16px; font-weight:600; color:#6f6f6f;">ITAssist AI — Service Desk Copilot</div>
+                        <div style="font-size:13px; color:#4f4f4f; margin-top:6px;">Describe your IT issue below or pick a common issue shortcut</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
             for msg in st.session_state.chat_history:
-                if msg["role"] == "assistant" and msg.get("agent_step") == "🔧 Service Desk Copilot Response":
+                if msg["role"] == "assistant" and msg.get("agent_step") == " Service Desk Copilot Response":
                     step_badge = f'<span style="font-size:10px; background:#171717; color:#b4b4b4; padding:2px 8px; border-radius:10px; margin-bottom:6px; display:inline-block; border:1px solid #2f2f2f;">{msg.get("agent_step")}</span><br>'
                     st.markdown(
                         f"""
                         <div style="display:flex; margin:12px 0; align-items:flex-start;">
-                            <div style="margin-right:8px; font-size:20px; padding-top:4px;">🤖</div>
+                            <div style="margin-right:8px; font-size:20px; padding-top:4px;"></div>
                             <div style="background:transparent; color:#ececec; padding:4px 12px; max-width:90%; font-size:14px; line-height:1.6;">
                                 {step_badge}
                             </div>
@@ -453,6 +458,7 @@ def render_user_portal(username: str):
                         render_structured_resolution(msg["content"])
                 else:
                     render_chat_message(msg["role"], msg["content"], msg.get("agent_step", ""))
+
 
         # ── Stage: Spinner states (auto-run, no UI) ───────────────────────────
         stage = st.session_state.portal_stage
@@ -470,26 +476,25 @@ def render_user_portal(username: str):
             _render_done_stage()
             return
 
-        # ══════════════════════════════════════════════════════════════════════
-        # BOTTOM BAR — always visible (contextual content above it)
-        # ══════════════════════════════════════════════════════════════════════
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        # == BOTTOM INPUT BAR ================================================
+        # Separator
+        st.markdown('<hr style="border:none; border-top:1px solid #2f2f2f; margin:8px 0 4px 0;">', unsafe_allow_html=True)
 
-        # ── Contextual action buttons (self_resolve stage) ────────────────────
+        # -- Contextual action buttons (self_resolve stage) -------------------
         if stage == "self_resolve":
             _render_self_resolve_actions(username)
 
-        # ── Quick issue shortcuts (only at idle) ──────────────────────────────
+        # -- Quick issue shortcuts (only at idle) -----------------------------
         if stage == "idle":
             SHORTCUTS = [
-                ("VPN Error 800",       "VPN won't connect — error 800"),
+                ("VPN Error 800",       "VPN won't connect - error 800"),
                 ("Slow PC / Freezing",  "My laptop is very slow and freezing"),
                 ("BitLocker Key",       "BitLocker asking for recovery key"),
                 ("Wi-Fi Dropping",      "Wi-Fi keeps disconnecting randomly"),
                 ("Outlook Not Opening", "Outlook not opening or crashing on start"),
                 ("Printer Offline",     "Printer showing offline and won't print"),
             ]
-            st.markdown("<p style='font-size:11px; color:#64748b; margin:0 0 4px 0;'>💡 Common issues:</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size:11px; color:#64748b; margin:0 0 4px 0;'>Common issues:</p>", unsafe_allow_html=True)
             chip_cols = st.columns(6)
             for idx, (label, full_text) in enumerate(SHORTCUTS):
                 with chip_cols[idx]:
@@ -497,9 +502,10 @@ def render_user_portal(username: str):
                         st.session_state.bottom_input = full_text
                         st.rerun()
 
-        # ── Unified Bottom Input Bar ──────────────────────────────────────────
+        # -- Unified Bottom Input Bar -----------------------------------------
         if stage in ("idle", "answering_questions"):
             _render_bottom_input_bar(username, stage)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -507,14 +513,14 @@ def render_user_portal(username: str):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _render_bottom_input_bar(username: str, stage: str):
-    send_label = "🚀 Analyze My Issue" if stage == "idle" else "→ Submit Answer"
+    send_label = " Analyze My Issue" if stage == "idle" else "→ Submit Answer"
     placeholder = (
         "Describe your IT issue here..." if stage == "idle"
         else "Type your diagnostic answers here..."
     )
 
     # File uploader in an expander-style toggle
-    with st.expander("📎 Attach files (screenshots, PDFs, images)", expanded=False):
+    with st.expander(" Attach files (screenshots, PDFs, images)", expanded=False):
         uploaded_files = st.file_uploader(
             "Attach files",
             type=["png", "jpg", "jpeg", "webp", "pdf", "docx", "txt", "log"],
@@ -526,17 +532,17 @@ def _render_bottom_input_bar(username: str, stage: str):
         if uploaded_files:
             new_files = [f for f in uploaded_files if f"{f.name}_{f.size}" not in st.session_state.extracted_files_cache]
             if new_files:
-                with st.spinner("🔍 Reading and scanning files..."):
+                with st.spinner(" Reading and scanning files..."):
                     _extract_and_cache_files(new_files)
                 st.rerun()
             else:
                 names = ", ".join(f.name for f in uploaded_files)
-                st.caption(f"✅ {len(uploaded_files)} file(s) ready: {names}")
+                st.caption(f" {len(uploaded_files)} file(s) ready: {names}")
 
     user_input = st.text_area(
         "Message",
         value=st.session_state.get("bottom_input", ""),
-        height=80,
+        height=48,
         placeholder=placeholder,
         label_visibility="collapsed",
         key="bottom_input_area",
@@ -546,7 +552,7 @@ def _render_bottom_input_bar(username: str, stage: str):
     with col_send:
         send = st.button(send_label, type="primary", use_container_width=True, key="bottom_send_btn")
     with col_reset:
-        if st.button("🔄 Reset", use_container_width=True, key="bottom_reset_btn"):
+        if st.button(" Reset", use_container_width=True, key="bottom_reset_btn"):
             _reset_portal()
             st.rerun()
 
@@ -576,9 +582,9 @@ def _handle_idle_submit(username: str, text: str):
         _add_chat("user", text)
         _add_chat(
             "assistant",
-            "👋 **Hello! Welcome to the IT Support Portal.**\n\n"
+            " **Hello! Welcome to the IT Support Portal.**\n\n"
             "I'm your IT Service Desk Copilot. Describe your IT issue below and I'll help you troubleshoot it step by step!",
-            agent_step="👋 Greeting"
+            agent_step=" Greeting"
         )
         st.rerun()
         return
@@ -586,7 +592,7 @@ def _handle_idle_submit(username: str, text: str):
     # Extract file context from cache
     uploaded_files = st.session_state.get("file_uploader") or []
     if uploaded_files:
-        _log(f"📎 Reading {len(uploaded_files)} attached file(s) from cache...")
+        _log(f" Reading {len(uploaded_files)} attached file(s) from cache...")
         from utils.file_reader import semantic_search_in_doc
         parts, full_parts = [], []
         for f in uploaded_files:
@@ -599,7 +605,7 @@ def _handle_idle_submit(username: str, text: str):
                     parts.append(f"[{f.name}]:\n{relevant}")
         st.session_state.attached_files_context = "\n\n".join(parts)
         st.session_state.full_uploaded_text = "\n\n".join(full_parts)
-        _log("✅ File context ready")
+        _log(" File context ready")
 
     _add_chat("user", text)
     st.session_state.user_issue = text
@@ -622,18 +628,18 @@ def _run_classifying_stage(username: str):
     user_message = st.session_state.get("user_issue", "")
     attached_context = st.session_state.get("attached_files_context", "")
 
-    with st.spinner("🛡️ Checking safety & searching knowledge base..."):
-        _log("🔍 Scanning FAISS knowledge base...")
+    with st.spinner(" Checking safety & searching knowledge base..."):
+        _log(" Scanning FAISS knowledge base...")
         from rag.retriever import search as rag_search
         try:
             local_docs = rag_search(user_message, k=3)
             local_context = "\n\n".join(d.get("content", "") for d in local_docs) if local_docs else ""
-            _log(f'📄 Matched {len(local_docs)} local SOP article(s)' if local_docs else "📄 No exact local SOP match — using general knowledge")
+            _log(f' Matched {len(local_docs)} local SOP article(s)' if local_docs else " No exact local SOP match — using general knowledge")
         except Exception:
             local_context = ""
-            _log("📄 FAISS search skipped (index not ready)")
+            _log(" FAISS search skipped (index not ready)")
 
-        _log("🛡️ Guardrail scanning input + attachments...")
+        _log(" Guardrail scanning input + attachments...")
         from utils.guardrail import guardrail_check, build_enriched_context
         guard = guardrail_check(
             user_issue=user_message,
@@ -642,13 +648,13 @@ def _run_classifying_stage(username: str):
         )
 
         if not guard.safe:
-            _log(f"🚫 Guardrail BLOCKED: {guard.reason[:60]}")
-            st.error(f"🛡️ **Guardrail blocked this request**\n\n**Reason:** {guard.reason}")
+            _log(f" Guardrail BLOCKED: {guard.reason[:60]}")
+            st.error(f" **Guardrail blocked this request**\n\n**Reason:** {guard.reason}")
             st.session_state.portal_stage = "idle"
             st.rerun()
             return
 
-        _log("✅ Guardrail: Content cleared")
+        _log(" Guardrail: Content cleared")
         enriched_context = build_enriched_context(
             user_issue=user_message,
             local_rag_context=local_context,
@@ -656,9 +662,9 @@ def _run_classifying_stage(username: str):
         )
         augmented_message = f"{user_message}\n\n--- CONTEXT ---\n{enriched_context}"
 
-    with st.spinner("🤖 Classifying issue and generating diagnostic questions..."):
+    with st.spinner(" Classifying issue and generating diagnostic questions..."):
         try:
-            _log("🤖 Sending to Groq for classification + cross-questions...")
+            _log(" Sending to Groq for classification + cross-questions...")
             agent_state = run_intake_and_knowledge(
                 user_message=augmented_message,
                 session_id=st.session_state.session_id,
@@ -667,29 +673,29 @@ def _run_classifying_stage(username: str):
 
             cat = agent_state.get("category", "Other")
             conf = agent_state.get("intake_confidence", 0.0)
-            icon = CATEGORY_ICONS.get(cat, "❓")
+            icon = CATEGORY_ICONS.get(cat, "")
             articles = agent_state.get("articles_used", [])
-            _log(f"📊 Classified: {cat} ({conf:.0%} confidence)")
+            _log(f" Classified: {cat} ({conf:.0%} confidence)")
 
             _add_chat(
                 "assistant",
                 f"**Issue Classified:** {icon} **{cat}** (confidence: {conf:.0%})\n\n"
                 f"**Knowledge Base Searched:** {', '.join(articles) if articles else 'General SOP documentation'}"
-                + (f"\n\n📎 *Attached document context included in analysis.*" if attached_context else ""),
-                agent_step="🔍 Intake + 📚 Knowledge Agents",
+                + (f"\n\n *Attached document context included in analysis.*" if attached_context else ""),
+                agent_step=" Intake +  Knowledge Agents",
             )
 
             questions = agent_state.get("diagnostic_questions", "")
-            _log("❓ Cross-questions generated — awaiting user answers")
+            _log(" Cross-questions generated — awaiting user answers")
             _add_chat(
                 "assistant",
                 f"**To verify the exact cause, please answer these diagnostic questions:**\n\n{questions}",
-                agent_step="❓ Diagnostic Questions",
+                agent_step=" Diagnostic Questions",
             )
             st.session_state.portal_stage = "answering_questions"
 
         except Exception as e:
-            _log(f"❌ Agent error: {str(e)[:50]}")
+            _log(f" Agent error: {str(e)[:50]}")
             st.error(f"AI processing error: {str(e)}")
             st.session_state.portal_stage = "idle"
 
@@ -705,21 +711,21 @@ def _run_generating_resolution_stage():
 
     user_answers = st.session_state.get("user_answers_input", "")
 
-    with st.spinner("🛡️ Checking answer safety..."):
-        _log("🛡️ Guardrail scanning user answers...")
+    with st.spinner(" Checking answer safety..."):
+        _log(" Guardrail scanning user answers...")
         from utils.guardrail import guardrail_check
         guard = guardrail_check(user_issue=user_answers)
         if not guard.safe:
-            _log(f"🚫 Guardrail BLOCKED answers: {guard.reason[:60]}")
-            st.error(f"🛡️ **Guardrail blocked:** {guard.reason}")
+            _log(f" Guardrail BLOCKED answers: {guard.reason[:60]}")
+            st.error(f" **Guardrail blocked:** {guard.reason}")
             st.session_state.portal_stage = "answering_questions"
             st.rerun()
             return
-        _log("✅ Guardrail: Answers cleared")
+        _log(" Guardrail: Answers cleared")
 
-    with st.spinner("🔧 Generating troubleshooting steps..."):
+    with st.spinner(" Generating troubleshooting steps..."):
         try:
-            _log("✍️ Writing session_finding.txt...")
+            _log(" Writing session_finding.txt...")
             from agents.graph import generate_final_resolution
             updated_state = generate_final_resolution(
                 state=agent_state,
@@ -727,15 +733,15 @@ def _run_generating_resolution_stage():
             )
             st.session_state.agent_state = updated_state
             chat_reply = updated_state.get("analysis_text", "")
-            _log("🔧 Final resolution ready!")
+            _log(" Final resolution ready!")
             _add_chat(
                 "assistant",
                 f"**Here are the recommended troubleshooting steps:**\n\n{chat_reply}",
-                agent_step="🔧 Service Desk Copilot Response"
+                agent_step=" Service Desk Copilot Response"
             )
             st.session_state.portal_stage = "self_resolve"
         except Exception as e:
-            _log(f"❌ Resolution error: {str(e)[:50]}")
+            _log(f" Resolution error: {str(e)[:50]}")
             st.error(f"Resolution generation error: {str(e)}")
             st.session_state.portal_stage = "self_resolve"
 
@@ -755,7 +761,7 @@ def _render_self_resolve_actions(username: str):
 
     # Email draft
     if "email_draft" not in st.session_state:
-        if st.button("📧 Draft Support Email", use_container_width=True, key="draft_email_btn"):
+        if st.button(" Draft Support Email", use_container_width=True, key="draft_email_btn"):
             with st.spinner("Writing email draft..."):
                 from agents.graph import draft_support_email
                 st.session_state.email_draft = draft_support_email(
@@ -765,9 +771,9 @@ def _render_self_resolve_actions(username: str):
             st.rerun()
 
     if st.session_state.get("email_draft"):
-        with st.expander("📧 Support Email Draft", expanded=True):
+        with st.expander(" Support Email Draft", expanded=True):
             st.text_area("Draft", value=st.session_state.email_draft, height=180, key="email_draft_area")
-            if st.button("🔄 Regenerate", key="regen_email_btn"):
+            if st.button(" Regenerate", key="regen_email_btn"):
                 del st.session_state.email_draft
                 st.rerun()
 
@@ -775,23 +781,23 @@ def _render_self_resolve_actions(username: str):
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("✅ Yes — Issue Fixed!", type="primary", use_container_width=True, key="resolved_btn"):
-            _add_chat("user", "✅ The issue is resolved. No support ticket needed.")
+        if st.button(" Yes — Issue Fixed!", type="primary", use_container_width=True, key="resolved_btn"):
+            _add_chat("user", " The issue is resolved. No support ticket needed.")
             _add_chat(
                 "assistant",
-                "🎉 **Wonderful! I'm glad the steps helped.**\n\nNo ticket was created. Let me know if anything else comes up!",
-                agent_step="✅ Resolved",
+                " **Wonderful! I'm glad the steps helped.**\n\nNo ticket was created. Let me know if anything else comes up!",
+                agent_step=" Resolved",
             )
             st.session_state.portal_stage = "done"
             st.rerun()
 
     with col2:
-        if st.button("🎫 No — Create Ticket", use_container_width=True, key="not_resolved_btn"):
-            _add_chat("user", "🎫 I'd like to create a support ticket.")
+        if st.button(" No — Create Ticket", use_container_width=True, key="not_resolved_btn"):
+            _add_chat("user", " I'd like to create a support ticket.")
             _add_chat(
                 "assistant",
                 "Certainly! I've prepared a ticket preview for you. Please review and approve it below.",
-                agent_step="🎫 Ticket Creator",
+                agent_step=" Ticket Creator",
             )
             st.session_state.portal_stage = "ticket_preview"
             st.rerun()
@@ -809,7 +815,7 @@ def _render_ticket_preview_inline(username: str):
     st.markdown(
         """
         <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:16px; margin:12px 0 8px 0;">
-            <div style="font-size:15px; font-weight:700; color:#ececec; margin-bottom:4px;">🎫 Support Ticket Preview</div>
+            <div style="font-size:15px; font-weight:700; color:#ececec; margin-bottom:4px;"> Support Ticket Preview</div>
             <div style="color:#b4b4b4; font-size:12px;">Review the AI-generated ticket. You can edit the summary before approving.</div>
         </div>
         """,
@@ -822,7 +828,7 @@ def _render_ticket_preview_inline(username: str):
         st.markdown(
             f"""<div style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:10px 14px; margin-bottom:8px;">
                 <div style="color:#94a3b8; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Category</div>
-                <div style="color:#e2e8f0; font-size:15px; font-weight:700; margin-top:4px;">{CATEGORY_ICONS.get(cat, "❓")} {cat}</div>
+                <div style="color:#e2e8f0; font-size:15px; font-weight:700; margin-top:4px;">{CATEGORY_ICONS.get(cat, "")} {cat}</div>
             </div>""",
             unsafe_allow_html=True
         )
@@ -835,21 +841,21 @@ def _render_ticket_preview_inline(username: str):
                 <div style="color:#94a3b8; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Severity · Confidence</div>
                 <div style="font-size:15px; font-weight:700; margin-top:4px;">
                     <span style="font-size:12px; color:#b4b4b4; margin-right:6px;">Signed in as <b>{username}</b></span>
-                    <span style="color:{sev_color};">⚠ {sev}</span>
+                    <span style="color:{sev_color};"> {sev}</span>
                     <span style="color:#10a37f; margin-left:12px;">{conf:.0%}</span>
                 </div>
             </div>""",
             unsafe_allow_html=True
         )
 
-    with st.expander("🧪 AI Analysis Details", expanded=False):
+    with st.expander(" AI Analysis Details", expanded=False):
         st.markdown(f"**Problem:** {agent_state.get('problem_title', '')}")
         st.markdown(f"**Probable Cause:** {agent_state.get('probable_cause', '')}")
         st.markdown(f"**Analysis:** {agent_state.get('analysis_text', '')[:300]}...")
 
     default_summary = agent_state.get("issue_summary", agent_state.get("user_message", ""))
     edited_summary = st.text_area(
-        "✏️ Edit Issue Summary (optional):",
+        " Edit Issue Summary (optional):",
         value=st.session_state.get("edit_summary", default_summary),
         height=72,
         key="ticket_summary_edit",
@@ -858,19 +864,19 @@ def _render_ticket_preview_inline(username: str):
 
     col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
-        if st.button("✅ Approve & Submit", type="primary", use_container_width=True, key="approve_ticket"):
+        if st.button(" Approve & Submit", type="primary", use_container_width=True, key="approve_ticket"):
             _submit_ticket(username, agent_state, edited_summary)
     with col_b:
-        if st.button("✏️ Edit Note", use_container_width=True, key="edit_ticket"):
+        if st.button(" Edit Note", use_container_width=True, key="edit_ticket"):
             st.info("Edit the summary above, then click Approve.")
     with col_c:
-        if st.button("❌ Cancel", use_container_width=True, key="cancel_ticket"):
-            _add_chat("user", "❌ Ticket cancelled.")
+        if st.button(" Cancel", use_container_width=True, key="cancel_ticket"):
+            _add_chat("user", " Ticket cancelled.")
             _add_chat("assistant", "Ticket cancelled. Let me know if you need further help.", agent_step="Cancelled")
             st.session_state.portal_stage = "done"
             st.rerun()
     with col_d:
-        if st.button("🔄 Reset", use_container_width=True, key="reset_ticket_btn"):
+        if st.button(" Reset", use_container_width=True, key="reset_ticket_btn"):
             _reset_portal()
             st.rerun()
 
@@ -893,11 +899,11 @@ def _submit_ticket(username: str, agent_state: dict, edited_summary: str):
     st.session_state.ticket_data = ticket
     _add_chat(
         "assistant",
-        f"🎫 **Ticket Created Successfully!**\n\n"
+        f" **Ticket Created Successfully!**\n\n"
         f"**Ticket ID:** {ticket.ticket_id}\n"
         f"**Status:** Open\n\n"
         f"An IT engineer will review your ticket shortly. Track it in the **My Tickets** section.",
-        agent_step="✅ Ticket Submitted",
+        agent_step=" Ticket Submitted",
     )
     st.session_state.portal_stage = "done"
     st.rerun()
@@ -906,15 +912,15 @@ def _submit_ticket(username: str, agent_state: dict, edited_summary: str):
 def _render_done_stage():
     ticket = st.session_state.get("ticket_data")
     if ticket:
-        st.success(f"✅ Ticket **{ticket.ticket_id}** has been submitted to the IT team.")
+        st.success(f" Ticket **{ticket.ticket_id}** has been submitted to the IT team.")
 
     st.markdown("<br>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔄 Start New Session", type="primary", use_container_width=True, key="new_session"):
+        if st.button(" Start New Session", type="primary", use_container_width=True, key="new_session"):
             _reset_portal()
             st.rerun()
     with col2:
-        if st.button("📋 View My Tickets", use_container_width=True, key="view_tickets"):
+        if st.button(" View My Tickets", use_container_width=True, key="view_tickets"):
             st.session_state.app_page = "my_tickets"
             st.rerun()

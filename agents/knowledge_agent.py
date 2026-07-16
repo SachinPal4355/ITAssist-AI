@@ -1,10 +1,4 @@
-"""
-Agent 2: Knowledge Agent
-Responsibility: Search the FAISS vector store (RAG) for relevant SOP content
-                based on the classified category and user message.
-Input:  category (str), user_message (str)
-Output: {"sop_context": str, "articles_used": list[str]}
-"""
+
 from rag.retriever import search, is_index_ready
 
 

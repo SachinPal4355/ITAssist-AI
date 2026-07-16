@@ -1,9 +1,4 @@
-"""
-Agent 1: Intake Agent
-Responsibility: Classify the user's IT issue into a category with confidence score.
-Input:  User's raw message (str)
-Output: {"category": str, "confidence": float, "summary": str}
-"""
+
 import json
 import re
 from langchain_groq import ChatGroq

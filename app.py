@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # ── Page config (MUST be first Streamlit call) ────────────────────────────────
 st.set_page_config(
     page_title="ITAssist AI — Service Desk Copilot",
-    page_icon="🤖",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
@@ -42,8 +42,25 @@ st.markdown(
     button[title="Collapse sidebar"], [data-testid="stSidebarCollapseButton"] {
         display: none !important;
     }
-    /* Remove default top padding */
-    .block-container { padding-top: 0.5rem !important; padding-bottom: 1rem !important; }
+    /* ── Layout ── */
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 0 !important;
+        max-width: 1400px !important;
+    }
+    div[data-testid="stHorizontalBlock"] {
+        align-items: flex-start !important;
+    }
+
+    /* ── Sticky bottom input bar ── */
+    .sticky-bottom-bar {
+        position: sticky;
+        bottom: 0;
+        background: #212121;
+        border-top: 1px solid #2f2f2f;
+        padding-top: 10px;
+        z-index: 100;
+    }
 
     /* ── Buttons ── */
     .stButton > button {
@@ -175,33 +192,32 @@ if "app_page" not in st.session_state:
     st.session_state.app_page = "chat"
 
 
-# ── Compact Top Nav Bar ──────────────────────────────────────────────────
-# Inline nav: logo left, toggle right, no wasted space
-st.markdown(
-    """
-    <div style="background:#171717; border-bottom:1px solid #2f2f2f;
-                padding:12px 16px; margin-bottom:16px; border-radius:8px;
-                display:flex; align-items:center;">
-        <span style="font-size:18px; font-weight:700; color:#ececec;">🤖 ITAssist AI</span>
-        <span style="font-size:12px; color:#b4b4b4; margin-left:10px; margin-top:2px;">Service Desk Copilot</span>
-        <span style="flex:1;"></span>
-        <span style="font-size:12px; color:#b4b4b4; margin-right:6px;">Signed in as <b>User</b></span>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-col_spacer, col_toggle = st.columns([8, 2])
-with col_toggle:
-    if st.session_state.app_page == "chat":
-        if st.button("→ IT Portal", use_container_width=True, key="toggle_to_it"):
+# ── Compact Top Nav Bar (with inline portal toggle) ──────────────────────
+_toggle_label = "→ IT Portal" if st.session_state.app_page == "chat" else "← User Portal"
+_toggle_key = "toggle_portal_nav"
+
+_nav_col_main, _nav_col_btn = st.columns([7, 2])
+with _nav_col_main:
+    st.markdown(
+        """
+        <div style="display:flex; align-items:center; height:42px;">
+            <span style="font-size:18px; font-weight:700; color:#ececec;">ITAssist AI</span>
+            <span style="font-size:13px; color:#b4b4b4; margin-left:12px; margin-top:2px;">Service Desk Copilot</span>
+            <span style="flex:1;"></span>
+            <span style="font-size:13px; color:#b4b4b4; margin-right:10px;">Signed in as <b>Sachin</b></span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with _nav_col_btn:
+    if st.button(_toggle_label, use_container_width=True, key=_toggle_key):
+        if st.session_state.app_page == "chat":
             st.session_state.app_page = "it_dashboard"
             st.session_state.app_role = "engineer"
-            st.rerun()
-    else:
-        if st.button("← User Portal", use_container_width=True, key="toggle_to_user"):
+        else:
             st.session_state.app_page = "chat"
             st.session_state.app_role = "user"
-            st.rerun()
+        st.rerun()
 
 page = st.session_state.app_page
 username = st.session_state.app_username
@@ -215,7 +231,7 @@ elif page == "my_tickets":
     from database.crud import get_all_tickets, get_or_create_user
     from ui.components import render_page_header, render_ticket_card, render_info_banner
 
-    render_page_header("🎫 My Tickets", f"Support tickets submitted by {username}")
+    render_page_header(" My Tickets", f"Support tickets submitted by {username}")
 
     user = get_or_create_user(username, role)
     all_tickets = get_all_tickets()
@@ -226,7 +242,7 @@ elif page == "my_tickets":
         render_info_banner(
             "No Tickets Yet",
             "You haven't submitted any support tickets. Use the Chat with AI page to describe your issue.",
-            icon="📭",
+            icon=None,
             color="#6366f1",
         )
     else:

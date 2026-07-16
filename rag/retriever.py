@@ -136,6 +136,32 @@ def reload_index():
     return _get_vectorstore() is not None
 
 
+def add_to_faiss_index(filepath: str, content: str):
+    """Dynamically add a new document to the existing FAISS index without full rebuild."""
+    vs = _get_vectorstore()
+    if vs is None:
+        return False
+        
+    from langchain_core.documents import Document
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from config.settings import RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP, FAISS_INDEX_PATH
+    
+    doc = Document(page_content=content, metadata={"source": filepath})
+    
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=RAG_CHUNK_SIZE,
+        chunk_overlap=RAG_CHUNK_OVERLAP,
+        separators=["\n\n", "\n", ". ", " ", ""],
+    )
+    chunks = splitter.split_documents([doc])
+    
+    if chunks:
+        vs.add_documents(chunks)
+        vs.save_local(FAISS_INDEX_PATH)
+        return True
+    return False
+
+
 # Category-to-SOP file mapping
 SOP_FILENAMES = {
     "Performance": "performance_sop.txt",
