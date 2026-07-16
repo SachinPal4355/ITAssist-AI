@@ -1,0 +1,186 @@
+WINDOWS PRINTING TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Printing Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/printing/printing-overview
+Category: Printing | Print Spooler | Print Drivers | Network Printers | Scanning
+
+================================================================================
+SECTION 1: COMMON PRINTING ISSUES
+================================================================================
+
+SUBCATEGORIES:
+- Errors and troubleshooting: General issues
+- Errors and troubleshooting: Print output or print failures
+- Errors and troubleshooting: Print spooler
+- Issues with Scanning
+- Management and Configuration: General issues
+
+--------------------------------------------------------------------------------
+ISSUE 1: PRINTER OFFLINE / NOT RESPONDING
+--------------------------------------------------------------------------------
+Symptoms:
+- Printer shows as "Offline" in Windows
+- Jobs are stuck in print queue
+- "Printer not responding" error message
+
+Diagnostic Commands:
+  # Check printer status
+  Get-Printer | Select-Object Name, PrinterStatus, PortName
+
+  # Check print spooler service
+  Get-Service -Name Spooler | Select-Object Status
+
+  # List pending print jobs
+  Get-PrintJob -PrinterName "<PrinterName>"
+
+Resolution Steps:
+1. Set printer online:
+   - Control Panel → Devices and Printers → right-click printer → See what's printing
+   - Printer menu → uncheck "Use Printer Offline"
+
+2. Restart Print Spooler service:
+   Stop-Service -Name Spooler -Force
+   Start-Sleep -Seconds 3
+   Start-Service -Name Spooler
+
+3. Clear stuck print queue:
+   Stop-Service -Name Spooler -Force
+   Remove-Item "C:\Windows\System32\spool\PRINTERS\*" -Recurse -Force
+   Start-Service -Name Spooler
+
+4. Ping the network printer to verify it is reachable:
+   ping <printer_IP_address>
+
+5. Re-add the printer:
+   - Settings → Bluetooth & devices → Printers & scanners → Add device
+
+--------------------------------------------------------------------------------
+ISSUE 2: PRINT SPOOLER KEEPS CRASHING
+--------------------------------------------------------------------------------
+Symptoms:
+- Print Spooler service stops unexpectedly
+- Cannot print at all, spooler won't start
+- Error 1053: Service did not respond
+
+Diagnostic Commands:
+  # Check spooler event logs
+  Get-WinEvent -LogName "Microsoft-Windows-PrintService/Admin" -MaxEvents 20
+
+  # Check spooler dependencies
+  Get-Service Spooler | Select-Object -ExpandProperty DependentServices
+
+Resolution Steps:
+1. Clear spooler queue completely:
+   net stop spooler
+   del /Q /F /S "%systemroot%\System32\spool\PRINTERS\*.*"
+   net start spooler
+
+2. Check for corrupt printer drivers:
+   - Print Management (printmanagement.msc) → Drivers
+   - Remove corrupt/outdated drivers
+
+3. Run SFC to repair system files:
+   sfc /scannow
+
+4. Check which driver is crashing using Windows Debugger (WinDbg):
+   - Analyze crash dump in C:\Windows\Minidump
+
+5. Remove and reinstall printer drivers:
+   printui.exe /s /t2
+   Remove the driver → Add back fresh driver
+
+--------------------------------------------------------------------------------
+ISSUE 3: WRONG PRINT OUTPUT / PRINT QUALITY ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- Printed pages come out blank
+- Wrong colors or distorted output
+- Documents print with garbled characters
+
+Resolution Steps:
+1. Print a test page:
+   - Right-click printer → Printer Properties → Print Test Page
+
+2. Clear and reset driver:
+   - Device Manager → Print queues → right-click → Uninstall device
+   - Download fresh driver from manufacturer website
+
+3. Check ink/toner levels through printer utility
+
+4. Verify document format:
+   - Print as PDF first to verify output is correct before printing
+
+5. Change printer settings:
+   - Paper size, orientation, colour mode
+
+--------------------------------------------------------------------------------
+ISSUE 4: NETWORK PRINTER CANNOT BE FOUND / INSTALLED
+--------------------------------------------------------------------------------
+Symptoms:
+- Cannot find printer on network when adding
+- "Windows cannot connect to the printer" error (0x00000709)
+- Error 0x00000040 or 0x0000007e when installing network printer
+
+Error 0x00000709 - Default Printer Cannot Be Set:
+  Resolution:
+  1. Open Registry Editor (regedit)
+  2. Navigate to: HKEY_CURRENT_USER\Software\Microsoft\Windows NT\CurrentVersion\Windows
+  3. Modify the "Device" value to match the correct printer
+
+Error 0x0000007e - Printer Driver Not Found:
+  Resolution:
+  1. Copy the correct printer driver to: C:\Windows\System32\spool\drivers\x64\3\
+  2. Or use: rundll32 printui.dll,PrintUIEntry /ia /m "<DriverName>" /h "x64" /v "Type 3"
+
+Resolution Steps for Network Printer:
+1. Verify printer IP address is reachable:
+   Test-NetConnection -ComputerName <PrinterIP> -Port 9100
+
+2. Add printer by IP address manually:
+   - Settings → Printers & scanners → Add printer or scanner
+   - "The printer I want isn't listed" → Add by TCP/IP address
+
+3. Check print server connectivity:
+   Test-NetConnection -ComputerName <PrintServer> -Port 445
+
+4. Map printer via UNC path:
+   net use \\<print_server>\<printer_share>
+
+5. Ensure print client features are enabled:
+   Get-WindowsOptionalFeature -Online | Where-Object {$_.FeatureName -like "*Print*"}
+
+--------------------------------------------------------------------------------
+ISSUE 5: PRINTER DRIVER ISOLATION / SECURITY
+--------------------------------------------------------------------------------
+Windows runs printer drivers in isolation to prevent crashes from affecting the
+spooler. If a driver is poorly written, it may fail in isolation mode.
+
+Resolution:
+  # List printers with isolation mode
+  Get-PrinterDriver | Select-Object Name, PrinterEnvironment, InfPath
+
+  # Set a specific driver to run in-process (not recommended for production)
+  Set-PrinterDriver -Name "<DriverName>" -PrintProcessor "WinPrint"
+
+================================================================================
+SECTION 2: SCANNING ISSUES
+================================================================================
+
+Symptoms:
+- Scanner not detected after Windows Update
+- WIA (Windows Image Acquisition) service not running
+- Scanned images are blank or corrupt
+
+Resolution Steps:
+1. Start WIA service:
+   Get-Service -Name stisvc | Start-Service
+
+2. Restart WIA service:
+   Restart-Service -Name stisvc -Force
+
+3. Uninstall and reinstall scanner driver
+
+4. Run hardware troubleshooter:
+   msdt.exe -id DeviceDiagnostic
+
+Source: Microsoft Learn Windows Client Printing Documentation
+Last Updated: 2025-01-15

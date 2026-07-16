@@ -1,0 +1,211 @@
+WINDOWS DEFENDER & ANTIVIRUS / MALWARE TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Security Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/windows-security/windows-security-overview
+Category: Security | Windows Defender | Antivirus | Malware | Ransomware | Threat Protection
+
+================================================================================
+SECTION 1: WINDOWS DEFENDER NOT WORKING
+================================================================================
+
+Symptoms:
+- Windows Security shows "Virus & threat protection" as disabled
+- Cannot enable real-time protection
+- Windows Defender turns off by itself
+- "Your virus & threat protection is managed by your organization"
+- Defender is running but not updating definitions
+
+Diagnostic Commands:
+  # Check Windows Defender status
+  Get-MpComputerStatus
+
+  # Check specific protection settings
+  Get-MpComputerStatus | Select-Object AMRunningMode, AntivirusEnabled, RealTimeProtectionEnabled,
+      AntispywareEnabled, NISEnabled, OnAccessProtectionEnabled, IoavProtectionEnabled,
+      AntispywareSignatureLastUpdated, AntivirusSignatureLastUpdated
+
+  # Check if Defender is disabled by policy
+  Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender" -ErrorAction SilentlyContinue |
+      Select-Object DisableAntiSpyware, DisableRealtimeMonitoring
+
+  # Get protection history
+  Get-MpThreatDetection | Select-Object -First 10 | Format-Table InitialDetectionTime, ThreatName, ActionSuccess
+
+Resolution Steps:
+1. Enable Real-time Protection:
+   Set-MpPreference -DisableRealtimeMonitoring $false
+
+2. Update Virus Definitions:
+   Update-MpSignature
+
+3. Start Windows Defender service:
+   Start-Service -Name WinDefend
+   Start-Service -Name SecurityHealthService
+
+4. If disabled by Group Policy:
+   - IT Admin must update the GPO
+   - Computer Configuration → Administrative Templates → Windows Components → Microsoft Defender Antivirus
+   - Set "Turn off Microsoft Defender Antivirus" to Not Configured or Disabled
+
+5. If third-party antivirus is disabling Defender:
+   - This is by design — Windows disables Defender when another AV is active
+   - Configure third-party AV or uninstall it to re-enable Defender
+
+6. Reset Windows Security app:
+   Get-AppxPackage Microsoft.SecHealthUI -AllUsers | Reset-AppxPackage
+
+7. Repair via DISM:
+   DISM /Online /Cleanup-Image /RestoreHealth
+
+--------------------------------------------------------------------------------
+SECTION 2: MALWARE REMOVAL PROCEDURE
+================================================================================
+
+CRITICAL STEPS — Follow in order:
+
+Step 1: Isolate the infected machine (IMMEDIATELY):
+  - Disconnect from network (unplug Ethernet, disable WiFi)
+  - Do NOT shut down — keeps evidence for forensics
+  - Notify IT Security team immediately
+
+Step 2: Identify the threat:
+  # Check recent detections
+  Get-MpThreat | Select-Object ThreatName, ThreatID, CategoryID, SeverityID, Resources | Format-Table -Wrap
+
+  # Check quarantine
+  Get-MpQuarantineFile
+
+  # Check running suspicious processes
+  Get-Process | Where-Object {$_.Path -like "C:\Users\*" -or $_.Path -like "C:\Temp\*"} |
+      Select-Object Name, Id, Path, CPU | Sort-Object CPU -Descending
+
+  # Check startup items for persistence
+  Get-CimInstance Win32_StartupCommand | Select-Object Name, Command, Location
+
+Step 3: Run full scan (if PC is still bootable):
+  Start-MpScan -ScanType FullScan
+
+  # Or quick scan first:
+  Start-MpScan -ScanType QuickScan
+
+Step 4: Remove detected threats:
+  # Remove all detected threats
+  Remove-MpThreat
+
+  # Remove specific threat
+  Get-MpThreat | Where-Object {$_.ThreatName -like "*<MalwareName>*"} |
+      ForEach-Object { Remove-MpThreat -ThreatID $_.ThreatID }
+
+Step 5: Restore quarantined legitimate files (if needed):
+  Get-MpQuarantineFile
+  Restore-MpQuarantineFile -FilePath "C:\path\to\file"
+
+Step 6: Reconnect to network and verify:
+  - Reconnect to network
+  - Run another full scan
+  - Verify no further detections
+
+RANSOMWARE SPECIFIC:
+  - DO NOT pay the ransom — contact IT Security immediately
+  - Isolate ALL machines on the same network segment
+  - Restore from CLEAN backups (pre-infection)
+  - Check shadow copies: vssadmin list shadows (may be deleted by ransomware)
+  - Report to: local law enforcement + cybersecurity team
+
+--------------------------------------------------------------------------------
+SECTION 3: PERFORMANCE IMPACT FROM ANTIVIRUS
+================================================================================
+
+Symptoms:
+- PC very slow specifically during scans
+- High CPU usage by MsMpEng.exe (Defender)
+- Antivirus causing application slow launches
+
+Diagnostic Commands:
+  # Check if Defender scan is running
+  Get-MpComputerStatus | Select-Object FullScanInProgress, QuickScanInProgress
+
+  # Get Defender scan schedule
+  Get-MpPreference | Select-Object ScanScheduleDay, ScanScheduleTime, ScanScheduleQuickScanTime
+
+Resolution Steps:
+1. Change scan schedule to off-hours:
+   Set-MpPreference -ScanScheduleDay Wednesday
+   Set-MpPreference -ScanScheduleTime 02:00:00  # Run at 2 AM
+
+2. Configure scan exclusions (only for known-safe paths):
+   # Add folder exclusion
+   Add-MpPreference -ExclusionPath "C:\DevProjects"
+
+   # Add process exclusion
+   Add-MpPreference -ExclusionProcess "devenv.exe"
+
+   # Add extension exclusion (use sparingly!)
+   Add-MpPreference -ExclusionExtension ".log"
+
+3. Configure CPU usage limit:
+   Set-MpPreference -ScanAvgCPULoadFactor 20  # Limit to 20% CPU
+
+4. Enable Low Periodic Scan mode (Light scan for low-end devices):
+   Set-MpPreference -LowThreatDefaultAction Allow
+
+5. Check scan type and frequency:
+   Get-MpPreference | Select-Object ScanParameters, ScanScheduleDay
+
+--------------------------------------------------------------------------------
+SECTION 4: WINDOWS FIREWALL ISSUES
+================================================================================
+
+Symptoms:
+- Application blocked by Windows Firewall
+- Cannot connect to specific service/port
+- "This app is blocked for your protection" message
+
+Diagnostic Commands:
+  # Check all firewall rules
+  Get-NetFirewallRule | Where-Object {$_.Enabled -eq "True"} | Select-Object DisplayName, Direction, Action, Profile
+
+  # Check if specific port is blocked
+  Test-NetConnection -ComputerName localhost -Port 8080
+
+  # Check blocked connections in event log
+  Get-WinEvent -LogName "Security" -FilterXPath "*[System[EventID=5157]]" -MaxEvents 10 |
+      Select-Object TimeCreated, Message
+
+Resolution Steps:
+1. Allow an application through firewall:
+   New-NetFirewallRule -DisplayName "Allow MyApp" -Direction Inbound -Program "C:\Apps\myapp.exe" -Action Allow
+
+2. Allow a specific port:
+   New-NetFirewallRule -DisplayName "Allow Port 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
+
+3. Temporarily disable firewall for testing:
+   Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+   # IMPORTANT: Re-enable immediately after testing:
+   Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+
+4. Reset firewall to defaults:
+   netsh advfirewall reset
+
+5. Enable Windows Firewall logging:
+   Set-NetFirewallProfile -LogBlocked True -LogFileName "C:\Windows\System32\LogFiles\Firewall\pfirewall.log"
+   Get-Content "C:\Windows\System32\LogFiles\Firewall\pfirewall.log" -Tail 20
+
+================================================================================
+SECTION 5: WINDOWS DEFENDER APPLICATION CONTROL (WDAC)
+================================================================================
+
+Symptoms:
+- "This app has been blocked for your protection" (WDAC policy)
+- Cannot run certain executables in enterprise environment
+
+Resolution:
+  - WDAC policies are controlled by IT administrators
+  - Users cannot bypass WDAC — must request IT to whitelist the application
+  - Submit application name, version, publisher, and business justification to IT
+
+To check if WDAC is active:
+  Get-CimInstance -Namespace root\Microsoft\Windows\DeviceGuard -ClassName Win32_DeviceGuard |
+      Select-Object CodeIntegrityPolicyEnforcementStatus
+
+Source: Microsoft Learn - Windows Client Security Documentation
+Last Updated: 2025-01-15

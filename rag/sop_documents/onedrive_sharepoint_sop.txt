@@ -1,0 +1,193 @@
+ONEDRIVE, SHAREPOINT & CLOUD STORAGE TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Documentation
+Category: OneDrive | SharePoint | Cloud Storage | Sync | Microsoft 365 Storage | Teams Files
+
+================================================================================
+SECTION 1: ONEDRIVE SYNC ISSUES
+================================================================================
+
+Symptoms:
+- OneDrive sync paused or stuck
+- Files showing red X or orange ! sync icons
+- "OneDrive can't sync" error notification
+- Files not appearing on other devices
+- "The tag present in the reparse point buffer is invalid" error
+- OneDrive using too much CPU or bandwidth
+
+Diagnostic Commands:
+  # Check OneDrive status
+  Get-Process -Name OneDrive -ErrorAction SilentlyContinue | Select-Object Name, CPU, WorkingSet, Path
+
+  # Check OneDrive sync folder
+  $OneDrivePath = "$env:USERPROFILE\OneDrive"
+  (Get-ChildItem $OneDrivePath -Recurse | Measure-Object -Property Length -Sum).Sum / 1GB
+
+  # Check OneDrive logs
+  Get-ChildItem "$env:LOCALAPPDATA\Microsoft\OneDrive\logs\" | Sort-Object LastWriteTime -Descending | Select-Object -First 5
+
+Common OneDrive Error Codes:
+  0x8007016A - Can't access OneDrive files:
+    Fix: Sign out and back in to OneDrive
+    
+  0x80070194 - Cloud sync engine ran into a problem:
+    Fix: Reset OneDrive
+    
+  0x80071129 - Reparse point violation:
+    Fix: Move files out of the problem folder
+    
+  Insufficient storage space:
+    Fix: Clear cloud storage or buy more space at office.com/myaccount
+
+Resolution Steps:
+1. Pause and Resume sync:
+   - OneDrive tray icon → Pause syncing → 2 hours
+   - Wait then click Resume syncing
+
+2. Sign out and back in to OneDrive:
+   - OneDrive tray icon → Settings → Account → Unlink this PC
+   - Sign back in to re-link
+
+3. Reset OneDrive (WARNING: triggers full re-sync):
+   # Run in Command Prompt:
+   %localappdata%\Microsoft\OneDrive\onedrive.exe /reset
+   # Wait 2 minutes
+   # If OneDrive doesn't restart automatically:
+   %localappdata%\Microsoft\OneDrive\onedrive.exe
+
+4. Clear OneDrive cache:
+   Stop-Process -Name OneDrive -Force -ErrorAction SilentlyContinue
+   Remove-Item "$env:LOCALAPPDATA\Microsoft\OneDrive\cache\*" -Recurse -Force -ErrorAction SilentlyContinue
+   Start-Process "$env:LOCALAPPDATA\Microsoft\OneDrive\OneDrive.exe"
+
+5. Check and free up storage:
+   - Visit https://onedrive.live.com to see storage usage
+   - Delete unnecessary files from cloud
+   - Empty OneDrive Recycle Bin
+
+6. Fix file path issues:
+   - OneDrive max path: 260 characters total
+   - OneDrive cannot sync files with invalid characters: " * : < > ? / \ |
+   - Rename problematic files/folders
+
+--------------------------------------------------------------------------------
+SECTION 2: ONEDRIVE FILES ON-DEMAND ISSUES
+================================================================================
+
+Symptoms:
+- Files show with cloud icon but won't download
+- "Error 0x8007016A" when trying to open on-demand file
+- Can't make files available offline
+
+Diagnostic Commands:
+  # Check Files On-Demand status
+  Get-ItemProperty "HKCU:\Software\Microsoft\OneDrive" -Name "FilesOnDemandEnabled" -ErrorAction SilentlyContinue
+
+  # Find all cloud-only files (placeholders)
+  Get-ChildItem -Path "$env:USERPROFILE\OneDrive" -Recurse |
+      Where-Object {$_.Attributes -band [System.IO.FileAttributes]::ReparsePoint} |
+      Select-Object FullName
+
+Resolution Steps:
+1. Make file/folder always available offline:
+   - Right-click file/folder in OneDrive → Always keep on this device
+
+2. Free up space (make file cloud-only again):
+   - Right-click file/folder → Free up space
+
+3. Download all files offline:
+   - OneDrive Settings → Files On-Demand → Download all OneDrive files now
+
+4. If Files On-Demand error persists:
+   - Disable Files On-Demand temporarily:
+     - OneDrive Settings → Settings → Files On-Demand → uncheck "Save space..."
+   - Sync fully, then re-enable
+
+--------------------------------------------------------------------------------
+SECTION 3: SHAREPOINT DOCUMENT LIBRARY ACCESS ISSUES
+================================================================================
+
+Symptoms:
+- Cannot access SharePoint site
+- "Access Denied" on SharePoint
+- SharePoint files not syncing to computer
+- Cannot open files from SharePoint in desktop apps
+
+Diagnostic Commands:
+  # Check SharePoint access in browser:
+  # Open: https://<tenant>.sharepoint.com
+
+  # Test SharePoint site connectivity
+  Test-NetConnection -ComputerName "<tenant>.sharepoint.com" -Port 443
+
+Resolution Steps:
+1. Clear browser cache for SharePoint:
+   - Edge/Chrome: Ctrl+Shift+Delete → clear cookies and cached images
+   - Or use InPrivate/Incognito window to test
+
+2. Re-authenticate to SharePoint:
+   - Sign out from SharePoint → clear credentials in browser
+   - Control Panel → Credential Manager → Windows Credentials
+   - Remove any sharepoint.com entries
+   - Sign back in
+
+3. Fix "Access Denied":
+   - Contact site owner to verify your permissions
+   - IT Admin: go to SharePoint Admin Center → Sites → check membership
+
+4. Sync SharePoint library to desktop:
+   - Open SharePoint in browser
+   - Navigate to Documents library
+   - Click "Sync" button → opens OneDrive sync
+   - Files appear in File Explorer under the site name
+
+5. Fix "This file is locked for editing":
+   - Another user or you have the file open
+   - Check if you have it open in another window
+   - Co-authoring: multiple people can edit simultaneously in Microsoft 365 apps
+
+--------------------------------------------------------------------------------
+SECTION 4: CLOUD STORAGE BANDWIDTH MANAGEMENT
+================================================================================
+
+Symptoms:
+- OneDrive syncing using all available bandwidth
+- Slow internet because of cloud backup
+
+Resolution Steps:
+1. Limit OneDrive upload/download speed:
+   - OneDrive tray → Settings → Network tab
+   - Set upload/download rate limits (e.g., Upload: 50 KB/s)
+
+2. Schedule sync for off-hours (for enterprise):
+   # Via Group Policy:
+   Computer Configuration → Administrative Templates → OneDrive
+   "Limit the sync client upload speed to a percentage of throughput"
+
+3. Prevent OneDrive from starting automatically:
+   Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDrive" -ErrorAction SilentlyContinue
+   Remove-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "OneDrive" -ErrorAction SilentlyContinue
+
+================================================================================
+SECTION 5: ONEDRIVE ENTERPRISE (KNOWN FOLDER MOVE)
+================================================================================
+
+IT Admins: Configuring Known Folder Move via Group Policy:
+  - Policy: "Silently move Windows known folders to OneDrive"
+  - Paths moved: Desktop, Documents, Pictures
+  - Users' files automatically backed up to OneDrive
+  - Requires OneDrive for Business (M365)
+
+Common Issues After Known Folder Move:
+  1. Desktop shortcuts broken:
+     - Shortcuts need to be re-created from C:\Users\<user>\OneDrive\Desktop\
+  
+  2. Applications can't find Documents folder:
+     - Some apps hardcode path — need to reconfigure app to use new path
+  
+  3. Sync conflict files (filename - Copy.docx):
+     # Find and clean up conflict files:
+     Get-ChildItem -Path "$env:USERPROFILE\OneDrive" -Recurse -Filter "*- Copy*" |
+         Select-Object FullName, LastWriteTime | Format-Table
+
+Source: Microsoft Learn - Windows Client OneDrive & SharePoint Documentation
+Last Updated: 2025-01-15

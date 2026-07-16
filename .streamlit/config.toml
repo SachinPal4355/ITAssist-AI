@@ -1,0 +1,6 @@
+[server]
+# Disable file watcher for heavy libraries to stop torchvision/transformers spam
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false

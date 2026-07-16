@@ -1,0 +1,213 @@
+WINDOWS UPDATE TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Servicing Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/performance-overview
+Category: Windows Update | WSUS | Update Errors | Patch Management | Servicing Stack
+
+================================================================================
+SECTION 1: WINDOWS UPDATE FAILURES
+================================================================================
+
+SUBCATEGORIES:
+- Windows Update stuck downloading or installing
+- Update error codes (0x80070002, 0x800F0922, etc.)
+- Feature update failures (in-place upgrade)
+- WSUS / Windows Server Update Services issues
+- Update rollback problems
+
+--------------------------------------------------------------------------------
+ISSUE 1: WINDOWS UPDATE STUCK DOWNLOADING OR AT 0%
+--------------------------------------------------------------------------------
+Symptoms:
+- Windows Update shows 0% for hours
+- Update stuck on "Checking for updates"
+- Download starts but never completes
+
+Diagnostic Commands:
+  # Check Windows Update service
+  Get-Service -Name wuauserv, bits, cryptsvc, msiserver | Select-Object Name, Status
+
+  # View update history
+  Get-WmiObject -Class Win32_QuickFixEngineering | Sort-Object InstalledOn -Descending | Select-Object -First 10
+
+  # Check pending updates
+  (New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher().Search("IsInstalled=0").Updates |
+      Select-Object Title, IsDownloaded
+
+Resolution Steps:
+1. Restart Windows Update services:
+   Stop-Service -Name wuauserv, bits, cryptsvc, msiserver -Force
+   Start-Sleep -Seconds 5
+   Start-Service -Name cryptsvc, bits, wuauserv, msiserver
+
+2. Clear Windows Update cache:
+   Stop-Service -Name wuauserv, bits -Force
+   Remove-Item "C:\Windows\SoftwareDistribution\*" -Recurse -Force
+   Remove-Item "C:\Windows\System32\catroot2\*" -Recurse -Force
+   Start-Service -Name bits, wuauserv
+
+3. Run Windows Update troubleshooter:
+   msdt.exe -id WindowsUpdateDiagnostic
+
+4. Reset Windows Update components (comprehensive):
+   net stop wuauserv
+   net stop cryptSvc
+   net stop bits
+   net stop msiserver
+   ren C:\Windows\SoftwareDistribution SoftwareDistribution.old
+   ren C:\Windows\System32\catroot2 catroot2.old
+   net start wuauserv
+   net start cryptSvc
+   net start bits
+   net start msiserver
+
+5. Download and install update manually:
+   - Visit: https://www.catalog.update.microsoft.com
+   - Search by KB number → download .msu file → install directly
+
+--------------------------------------------------------------------------------
+ISSUE 2: COMMON WINDOWS UPDATE ERROR CODES
+--------------------------------------------------------------------------------
+
+Error 0x80070002 - File not found:
+  Cause: Windows Update cache is corrupt
+  Fix:
+    Stop-Service wuauserv -Force
+    Remove-Item "C:\Windows\SoftwareDistribution\" -Recurse -Force
+    Start-Service wuauserv
+
+Error 0x80070003 - Path not found:
+  Fix: Same as 0x80070002
+
+Error 0x8007000E - Out of memory:
+  Fix:
+    - Free up disk space (need at least 10GB for updates)
+    - Increase virtual memory
+    - Close memory-intensive applications
+
+Error 0x800F0922 - CBS transaction not complete:
+  Cause: Usually a VPN or network issue blocking Windows Update servers
+  Fix:
+    - Disconnect VPN before updating
+    - Run: DISM /Online /Cleanup-Image /RestoreHealth
+    - Then: sfc /scannow
+
+Error 0x80240034 - Update not applicable:
+  Fix:
+    - Check if update is already installed: Get-HotFix -Id KB<number>
+    - Verify Windows version compatibility
+
+Error 0x800F0831 - Cannot acquire license:
+  Fix:
+    - Check internet connectivity
+    - If on WSUS: verify WSUS server is reachable
+    - Temporarily bypass WSUS:
+      # Set registry to use Windows Update directly (temp):
+      Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -Name "UseWUServer" -Value 0
+      Restart-Service wuauserv
+
+Error 0xC1900101 - Driver compatibility (Feature Update):
+  Fix:
+    - Update all device drivers before running feature update
+    - Disconnect external hardware temporarily
+    - Check Windows 11 compatibility: https://aka.ms/whynotupgrade
+
+Error 0x80004005 - Unspecified error:
+  Fix:
+    sfc /scannow
+    DISM /Online /Cleanup-Image /CheckHealth
+    DISM /Online /Cleanup-Image /ScanHealth
+    DISM /Online /Cleanup-Image /RestoreHealth
+
+--------------------------------------------------------------------------------
+ISSUE 3: WSUS (ENTERPRISE) UPDATE ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- Devices not getting updates from WSUS
+- "Windows Update cannot check for updates" error
+- Devices not appearing in WSUS console
+
+Diagnostic Commands:
+  # Check WSUS server assignment
+  Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" |
+      Select-Object WUServer, WUStatusServer
+
+  # Force check-in to WSUS
+  wuauclt /detectnow
+  wuauclt /reportnow
+
+  # Newer command:
+  UsoClient StartScan
+  UsoClient StartDownload
+  UsoClient StartInstall
+
+  # Check WSUS client logs
+  Get-Content "C:\Windows\WindowsUpdate.log" -Tail 50
+
+Resolution Steps:
+1. Verify WSUS server is reachable:
+   Test-NetConnection -ComputerName <WSUS_Server> -Port 8530
+
+2. Re-register client with WSUS:
+   wuauclt /resetauthorization /detectnow
+
+3. Clear client-side WSUS cache:
+   Stop-Service wuauserv
+   Remove-Item "C:\Windows\SoftwareDistribution\*" -Recurse -Force
+   Start-Service wuauserv
+   wuauclt /detectnow
+
+4. Check WSUS approval status:
+   - WSUS Console → Updates → check if update is approved for the target computer group
+
+5. Verify GPO WSUS settings:
+   gpresult /r | Select-String "WSUS"
+
+--------------------------------------------------------------------------------
+ISSUE 4: WINDOWS UPDATE TAKING TOO MUCH DISK SPACE
+--------------------------------------------------------------------------------
+Diagnostic Commands:
+  # Check Windows component store size
+  Dism /Online /Cleanup-Image /AnalyzeComponentStore
+
+  # Check WinSxS folder size (may take a few minutes)
+  $WinSxS = Get-ChildItem "C:\Windows\WinSxS" -Recurse -ErrorAction SilentlyContinue |
+      Measure-Object -Property Length -Sum
+  [math]::Round($WinSxS.Sum / 1GB, 2)
+
+Resolution Steps:
+1. Clean up superseded components:
+   Dism /Online /Cleanup-Image /StartComponentCleanup /ResetBase
+
+2. Run Disk Cleanup with system files:
+   cleanmgr /sageset:50
+   cleanmgr /sagerun:50
+
+3. Remove Windows Update cleanup files:
+   # Windows Update Cleanup category in Disk Cleanup
+   Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force
+
+================================================================================
+SECTION 2: CUMULATIVE UPDATE POST-INSTALL ISSUES
+================================================================================
+
+Device Slow After Update:
+  Resolution:
+  1. Wait 24-48 hours — indexing and optimization runs in background post-update
+  2. Check Disk Usage in Task Manager — TiWorker.exe is normal post-update
+  3. If still slow after 48 hours:
+     sfc /scannow
+     DISM /Online /Cleanup-Image /RestoreHealth
+
+Rollback Failed Update:
+  # View installed updates and timestamps
+  Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 5
+
+  # Uninstall a specific KB update:
+  $KB = "KB5030219"
+  wusa /uninstall /kb:$KB /quiet /norestart
+
+  # Or via Settings:
+  Settings → Windows Update → Update History → Uninstall Updates
+
+Source: Microsoft Learn - Windows Client Servicing Documentation
+Last Updated: 2025-01-15

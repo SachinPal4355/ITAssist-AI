@@ -1,0 +1,222 @@
+WINDOWS SYSTEM RECOVERY & RESTORE SOP
+Source: Microsoft Learn - Windows Client System Management Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/welcome-windows-client
+Category: System Restore | WinRE | Recovery | Factory Reset | Boot Repair | Startup | BIOS
+
+================================================================================
+SECTION 1: WINDOWS STARTUP / BOOT ISSUES
+================================================================================
+
+Symptoms:
+- PC won't boot - stuck on black screen
+- "Your PC ran into a problem and needs to restart" (BSOD loop)
+- "Automatic Repair" loop on startup
+- Windows stuck on loading spinner
+- "BOOTMGR is missing" error
+- "No boot device found" / "Operating System not found"
+
+Diagnostic Commands (run from recovery environment):
+  # Check disk health in WinRE
+  chkdsk C: /f /r /x
+
+  # Repair boot record
+  bootrec /fixmbr
+  bootrec /fixboot
+  bootrec /scanos
+  bootrec /rebuildbcd
+
+  # Check BCD store
+  bcdedit /enum all
+
+  # List all boot entries
+  bcdedit
+
+  # Repair WinRE Boot
+  reagentc /enable
+
+BOOTMGR Missing Error Resolution:
+1. Boot from Windows 10/11 USB installation media
+2. Choose "Repair your computer"
+3. Troubleshoot → Advanced Options → Command Prompt
+4. Run:
+   bootrec /fixmbr
+   bootrec /fixboot
+   bootrec /scanos
+   bootrec /rebuildbcd
+5. Restart
+
+For "No Boot Device" / MBR Issues:
+  # Full BCD rebuild:
+  bcdedit /export C:\BCDBackup
+  attrib -r -s -h C:\Boot\BCD
+  ren C:\Boot\BCD BCD.old
+  bootrec /rebuildbcd
+
+--------------------------------------------------------------------------------
+SECTION 2: WINDOWS RECOVERY ENVIRONMENT (WinRE)
+================================================================================
+
+How to Access WinRE:
+Method 1: From running Windows:
+  - Settings → System → Recovery → Advanced Startup → Restart now
+  - Or: Shift + Restart from Start menu
+
+Method 2: From power menu:
+  - Hold Shift while clicking Restart
+
+Method 3: Forced boot into recovery (if Windows won't start):
+  - Power on → when Windows starts loading → force power off
+  - Repeat 2-3 times → Windows auto-boots into WinRE
+
+Method 4: Boot from USB media:
+  - Insert Windows 10/11 USB → boot from USB
+  - Choose "Repair your computer"
+
+WinRE Options:
+  - Startup Repair: Automatically fixes common boot problems
+  - System Restore: Restores to a previous checkpoint
+  - System Image Recovery: Restores from complete backup image
+  - Startup Settings: Boot into Safe Mode, disable driver signature enforcement
+  - Command Prompt: Manual repair tools
+  - Uninstall Updates: Remove recently installed updates that caused issues
+
+--------------------------------------------------------------------------------
+SECTION 3: SYSTEM RESTORE
+================================================================================
+
+Symptoms:
+- System unstable after recent software or driver change
+- Want to undo recent changes without reinstalling
+
+Diagnostic Commands:
+  # Check if System Restore is enabled
+  Get-ComputerRestorePoint
+
+  # Enable System Restore on C: drive
+  Enable-ComputerRestore -Drive C:\
+
+  # Create manual restore point
+  Checkpoint-Computer -Description "Before major change" -RestorePointType MODIFY_SETTINGS
+
+  # Restore to a previous point (requires restart)
+  Restore-Computer -RestorePoint <SequenceNumber> -Confirm:$false
+
+Resolution Steps:
+1. Enable System Restore (must be done beforehand):
+   - Control Panel → System → System Protection
+   - Select C: drive → Configure → Turn on system protection
+   - Set max disk space (5-10%)
+
+2. Perform System Restore:
+   - Control Panel → System → System Protection → System Restore
+   - Choose restore point → Next → Finish
+
+3. System Restore from WinRE:
+   - WinRE → Troubleshoot → Advanced Options → System Restore
+   - Choose a restore point before the problem started
+
+4. View available restore points:
+   Get-ComputerRestorePoint | Select-Object Description, SequenceNumber, CreationTime
+
+NOTE: System Restore does NOT affect personal files (Documents, Pictures, etc.)
+It reverts: system files, drivers, registry, installed programs
+
+--------------------------------------------------------------------------------
+SECTION 4: SAFE MODE
+================================================================================
+
+Boot into Safe Mode:
+Method 1 (from Windows):
+  - Settings → System → Recovery → Advanced Startup → Restart Now
+  - Troubleshoot → Advanced Options → Startup Settings → Restart → F4 (Safe Mode) or F5 (Safe Mode with Networking)
+
+Method 2 (from msconfig):
+  msconfig
+  → Boot tab → Safe boot → Minimal (or Network for Safe Mode with Networking)
+  → Apply → Restart
+  # IMPORTANT: After fixing, uncheck Safe boot and restart again
+
+Method 3 (if Windows won't start):
+  - Access WinRE → Troubleshoot → Advanced Options → Startup Settings → Restart
+  - Press 4 for Safe Mode, 5 for Safe Mode with Networking
+
+Safe Mode Use Cases:
+  - Remove malware / unwanted software
+  - Uninstall problematic drivers
+  - Fix corrupted user profiles
+  - Determine if issue is caused by startup program or driver
+
+Safe Mode Diagnostic Commands:
+  # Check startup programs (should be minimal in safe mode)
+  Get-CimInstance Win32_StartupCommand | Select-Object Name, Command, Location
+
+  # Disable problematic startup item:
+  Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "<AppName>" -Value "" -Type String
+
+--------------------------------------------------------------------------------
+SECTION 5: RESET / FACTORY RESET WINDOWS
+================================================================================
+
+Symptoms:
+- PC severely corrupted and repair attempts failed
+- Want clean installation while keeping files (optional)
+- System is severely slow and reset is preferred over rebuild
+
+Important: Backup all data BEFORE reset!
+
+Reset Options:
+  Option A - Keep my files (removes apps and settings, keeps personal files):
+    - Settings → System → Recovery → Reset this PC → Keep my files
+
+  Option B - Remove everything (full clean):
+    - Settings → System → Recovery → Reset this PC → Remove everything
+    - For corporate: choose "Remove files and clean the drive" for secure wipe
+
+  Option C - Cloud download (downloads fresh Windows from Microsoft):
+    - Settings → System → Recovery → Reset this PC → Cloud download
+    - Best for severely corrupted systems
+
+  Option D - Local reinstall (uses local recovery partition):
+    - Settings → System → Recovery → Reset this PC → Local reinstall
+
+Reset from WinRE (if Windows won't start):
+  - WinRE → Troubleshoot → Reset this PC
+  - Choose Keep my files or Remove everything
+
+Post-Reset Checklist:
+  [ ] Reinstall all software
+  [ ] Re-join Active Directory domain
+  [ ] Reinstall drivers
+  [ ] Restore user data from backup
+  [ ] Install Windows Updates
+  [ ] Configure user settings
+
+--------------------------------------------------------------------------------
+SECTION 6: STARTUP REPAIR
+================================================================================
+
+Automatic Repair Loop Fix:
+  If stuck in "Automatic Repair" loop:
+
+  Method 1 - Disable Automatic Repair:
+    # In WinRE Command Prompt:
+    bcdedit /set {current} recoveryenabled No
+    bcdedit /set {current} bootstatuspolicy IgnoreAllFailures
+
+  Method 2 - Full repair sequence:
+    chkdsk C: /f /r
+    sfc /scannow
+    DISM /Online /Cleanup-Image /RestoreHealth
+    bootrec /fixmbr
+    bootrec /fixboot
+    bootrec /rebuildbcd
+
+  Method 3 - Restore BCD from backup:
+    bcdedit /import C:\BCDBackup
+
+Startup Repair from WinRE:
+  - WinRE → Troubleshoot → Advanced Options → Startup Repair
+  - Windows automatically diagnoses and fixes startup problems
+
+Source: Microsoft Learn - Windows Client System Recovery Documentation
+Last Updated: 2025-01-15

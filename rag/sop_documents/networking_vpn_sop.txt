@@ -1,0 +1,222 @@
+WINDOWS NETWORKING & VPN TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Networking Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/networking-overview
+Category: Networking | VPN | Remote Access | TCP/IP | DNS | DHCP | Wireless
+
+================================================================================
+SECTION 1: NETWORK CONNECTIVITY TROUBLESHOOTING
+================================================================================
+
+SUBCATEGORIES:
+- Access to remote file shares (SMB or DFS Namespace)
+- DNS resolution issues
+- Dynamic Host Configuration Protocol (DHCP) problems
+- Remote access / VPN connectivity
+- TCP/IP communications
+- Windows Firewall issues
+- Wireless networking and 802.1X authentication
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 1: BASIC CONNECTIVITY CHECK
+--------------------------------------------------------------------------------
+Symptoms:
+- No internet access
+- "No network" icon in system tray
+- Cannot reach internal servers
+
+Diagnostic Commands (Run as Administrator):
+  # Test connectivity to gateway
+  ping 8.8.8.8
+
+  # Test DNS resolution
+  nslookup google.com
+
+  # View current IP configuration
+  ipconfig /all
+
+  # Check network adapter status
+  Get-NetAdapter | Select-Object Name, Status, LinkSpeed
+
+  # View routing table
+  route print
+
+Resolution Steps:
+1. Release and renew IP address:
+   ipconfig /release
+   ipconfig /renew
+
+2. Flush DNS cache:
+   ipconfig /flushdns
+
+3. Reset TCP/IP stack:
+   netsh int ip reset
+   netsh winsock reset
+   Restart computer after these commands.
+
+4. Reset network adapter:
+   Get-NetAdapter | Restart-NetAdapter
+
+5. If wireless: forget and rejoin network
+   - Settings → Network → WiFi → Manage Known Networks → Forget → Reconnect
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 2: VPN / REMOTE ACCESS TROUBLESHOOTING
+--------------------------------------------------------------------------------
+Symptoms:
+- VPN client shows "Connection failed" or "Authentication failed"
+- Connected to VPN but cannot access internal resources
+- VPN disconnects randomly
+- Slow connection through VPN
+
+Diagnostic Commands:
+  # Check VPN connections
+  Get-VpnConnection
+
+  # Check VPN connection status
+  Get-VpnConnection | Select-Object Name, ConnectionStatus, ServerAddress
+
+  # View VPN routing
+  Get-NetRoute | Where-Object {$_.InterfaceAlias -like "*VPN*"}
+
+Common VPN Error Codes and Resolutions:
+  Error 800 - VPN server unreachable:
+    - Verify internet connectivity first
+    - Check if VPN server address is correct
+    - Verify no firewall is blocking ports 1723 (PPTP) or 443 (SSTP)
+
+  Error 691 - Authentication failed:
+    - Verify username and password
+    - Check if account is locked in Active Directory
+    - Verify NPS/RADIUS server is reachable
+
+  Error 812 - Connection prevented by policy:
+    - User may not be in VPN access group
+    - Contact IT administrator for AD group membership
+
+  Error 720 - Connection attempt failed:
+    - Reinstall WAN Miniport drivers
+    - Device Manager → View → Show Hidden Devices → Network Adapters
+    - Uninstall WAN Miniport (IP) and WAN Miniport (IPv6) → Scan for changes
+
+Resolution Steps for VPN:
+1. Flush DNS and reset Winsock:
+   ipconfig /flushdns
+   netsh winsock reset
+
+2. Re-register DNS:
+   ipconfig /registerdns
+
+3. Reset VPN connection:
+   rasdial <VPN_Name> /disconnect
+   rasdial <VPN_Name> <username> <password>
+
+4. Reinstall VPN client if above fail
+5. Check Windows Firewall is not blocking VPN ports:
+   Get-NetFirewallRule | Where-Object {$_.DisplayName -like "*VPN*"}
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 3: DNS TROUBLESHOOTING
+--------------------------------------------------------------------------------
+Symptoms:
+- Websites load by IP but not by name
+- "DNS_PROBE_FINISHED_NXDOMAIN" in browser
+- Cannot resolve internal company domain names
+
+Diagnostic Commands:
+  # Test DNS with specific server
+  nslookup google.com 8.8.8.8
+  nslookup internalserver.company.com 10.0.0.1
+
+  # Check current DNS servers
+  Get-DnsClientServerAddress
+
+  # Clear DNS cache
+  Clear-DnsClientCache
+
+  # View DNS cache
+  Get-DnsClientCache
+
+Resolution Steps:
+1. Change DNS servers to reliable ones:
+   Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses ("8.8.8.8","8.8.4.4")
+
+2. If internal DNS fails, check VPN is connected first
+3. Contact IT to verify DNS server is operational
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 4: SMB FILE SHARE ACCESS ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- Cannot access \\server\share network drives
+- "Network path not found" error
+- Mapped drive shows red X
+
+Diagnostic Commands:
+  # Test SMB connectivity
+  Test-NetConnection -ComputerName <server> -Port 445
+
+  # List current network connections
+  net use
+
+  # List mapped drives
+  Get-PSDrive -PSProvider FileSystem | Where-Object {$_.Root -like "\\*"}
+
+Resolution Steps:
+1. Reconnect network drive:
+   net use Z: \\server\share /persistent:yes
+
+2. Check SMB is enabled:
+   Get-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol"
+
+3. Enable Network Discovery:
+   - Control Panel → Network and Sharing Center → Advanced sharing settings
+   - Turn on Network Discovery and File and Printer Sharing
+
+4. Check credentials:
+   - Control Panel → Credential Manager → Windows Credentials
+   - Remove stale credentials for the server
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 5: WIRELESS NETWORKING
+--------------------------------------------------------------------------------
+Symptoms:
+- WiFi keeps disconnecting
+- Cannot connect to corporate WiFi (802.1X)
+- "Can't connect to this network" error
+
+Resolution Steps:
+1. Forget and reconnect to WiFi:
+   netsh wlan delete profile name="<NetworkName>"
+   Reconnect manually.
+
+2. For 802.1X enterprise WiFi issues:
+   - Ensure certificate is installed in Personal certificate store
+   - Check NPS/RADIUS server is reachable from IT
+
+3. Update wireless adapter drivers
+
+4. Reset wireless adapter:
+   netsh wlan disconnect
+   netsh wlan connect name="<NetworkName>"
+
+5. Check Windows Event Logs:
+   Get-WinEvent -LogName "Microsoft-Windows-WLAN-AutoConfig/Operational" -MaxEvents 20
+
+================================================================================
+SECTION 2: WINDOWS FIREWALL TROUBLESHOOTING
+================================================================================
+
+Diagnostic Commands:
+  # Check firewall status
+  Get-NetFirewallProfile
+
+  # Allow specific port
+  New-NetFirewallRule -DisplayName "Allow Port 8080" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow
+
+  # Temporarily disable firewall for testing (re-enable after!)
+  Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+  # Re-enable:
+  Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True
+
+Source: Microsoft Learn Windows Client Networking Documentation
+Last Updated: 2025-01-15

@@ -1,0 +1,235 @@
+BACKUP, STORAGE & FILE ACCESS TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Backup and Storage Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/backup-and-storage/backup-and-storage-overview
+Category: Backup | Storage | File Access | Disk Management | OneDrive | Shadow Copies
+
+================================================================================
+SECTION 1: BACKUP TROUBLESHOOTING
+================================================================================
+
+SUBCATEGORIES:
+- Windows Backup / File History
+- Shadow Copies / VSS (Volume Shadow Copy Service)
+- Disk Management issues
+- Storage Spaces
+- OneDrive sync issues
+- Network drive access problems
+
+--------------------------------------------------------------------------------
+ISSUE 1: WINDOWS BACKUP FAILS
+--------------------------------------------------------------------------------
+Symptoms:
+- Windows Backup reports error 0x81000019 or 0x80070001
+- Backup stops partway through
+- "One of the backup files could not be created" message
+
+Diagnostic Commands:
+  # Check VSS service status
+  Get-Service -Name VSS | Select-Object Status
+
+  # List VSS writers and their states
+  vssadmin list writers
+
+  # Check available disk space on backup destination
+  Get-PSDrive -PSProvider FileSystem
+
+  # View backup event logs
+  Get-WinEvent -LogName "Microsoft-Windows-Backup" -MaxEvents 20
+
+Resolution Steps:
+1. Restart VSS service:
+   Stop-Service -Name VSS -Force
+   Start-Service -Name VSS
+
+2. Restart related services:
+   Stop-Service -Name SQLWriter -Force -ErrorAction SilentlyContinue
+   Stop-Service -Name EventSystem -Force
+   Start-Service -Name EventSystem
+   Start-Service -Name SQLWriter -ErrorAction SilentlyContinue
+   Start-Service -Name VSS
+
+3. Fix VSS writers in failed state:
+   vssadmin list writers
+   # For any writer in "Failed" state, restart its host service
+
+4. Ensure backup destination has sufficient free space:
+   - Backup needs at least 10% more space than data being backed up
+
+5. Run Disk Check on backup destination:
+   chkdsk D: /f /r
+
+6. Common Error Codes:
+   0x81000019 - No shadow copies available: restart VSS service
+   0x80070001 - Incorrect function: check drive health with chkdsk
+   0x80070002 - File not found: files may have been deleted during backup
+   0x8078002A - The device is not ready: check if USB backup drive is connected
+
+--------------------------------------------------------------------------------
+ISSUE 2: FILE HISTORY NOT WORKING
+--------------------------------------------------------------------------------
+Symptoms:
+- File History reports "File History is off" even when enabled
+- Cannot restore previous versions of files
+- File History drive disconnected
+
+Resolution Steps:
+1. Check File History status:
+   - Control Panel → File History → Check status
+
+2. Manually start File History backup:
+   # Via Command Line:
+   fhmanagew.exe -backupnow
+
+3. If File History drive is unavailable:
+   - Control Panel → File History → Change drive → Select new drive
+
+4. Check File History service:
+   Get-Service -Name fhsvc | Select-Object Status, StartType
+   Start-Service -Name fhsvc
+
+--------------------------------------------------------------------------------
+ISSUE 3: SHADOW COPIES / PREVIOUS VERSIONS NOT AVAILABLE
+--------------------------------------------------------------------------------
+Symptoms:
+- Right-click → "Restore previous versions" shows no snapshots
+- Shadow copies missing after Windows Update
+- VSS snapshots not being created
+
+Diagnostic Commands:
+  # List all shadow copies
+  vssadmin list shadows
+
+  # List shadow copy storage
+  vssadmin list shadowstorage
+
+  # Check Volume Shadow Copy service
+  Get-Service -Name VSS
+
+Resolution Steps:
+1. Enable Shadow Copies on a volume:
+   # Check current status
+   vssadmin list shadowstorage /for=C:
+
+   # Create manual shadow copy
+   vssadmin create shadow /for=C:
+
+2. Configure shadow copy schedule via Task Scheduler:
+   - Task Scheduler → Task Scheduler Library → Microsoft → Windows → SystemRestore
+
+3. Fix VSS if no snapshots being created:
+   net stop vss
+   net stop swprv
+   net start swprv
+   net start vss
+
+--------------------------------------------------------------------------------
+ISSUE 4: DISK MANAGEMENT / STORAGE ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- Drive not appearing in File Explorer
+- Disk shows as "Unknown" or "Not Initialized" in Disk Management
+- Partition not accessible
+
+Diagnostic Commands:
+  # List all disks
+  Get-Disk
+
+  # List all partitions
+  Get-Partition
+
+  # List all volumes
+  Get-Volume
+
+  # Check disk health
+  Get-PhysicalDisk | Select-Object FriendlyName, HealthStatus, OperationalStatus, Size
+
+Resolution Steps:
+1. Initialize new disk:
+   Initialize-Disk -Number <DiskNumber> -PartitionStyle GPT
+
+2. Create new partition:
+   New-Partition -DiskNumber <DiskNumber> -UseMaximumSize -AssignDriveLetter
+
+3. Format new partition:
+   Format-Volume -DriveLetter X -FileSystem NTFS -NewFileSystemLabel "DataDrive"
+
+4. If disk shows as Offline:
+   Set-Disk -Number <DiskNumber> -IsOffline $false
+   Set-Disk -Number <DiskNumber> -IsReadOnly $false
+
+5. Run SMART diagnostics via PowerShell:
+   Get-PhysicalDisk | Get-StorageReliabilityCounter | Select-Object DeviceId, Temperature, ReadErrorsTotal, WriteErrorsTotal
+
+6. Run disk check:
+   chkdsk C: /f       # Fix errors
+   chkdsk C: /r       # Locate bad sectors and recover readable info
+
+--------------------------------------------------------------------------------
+ISSUE 5: NETWORK DRIVE / MAPPED DRIVE NOT RECONNECTING
+--------------------------------------------------------------------------------
+Symptoms:
+- Mapped network drive shows red X after login
+- "The network path was not found" error
+- Drive accessible manually but not after restart
+
+Diagnostic Commands:
+  # List current mapped drives
+  Get-PSDrive -PSProvider FileSystem
+
+  # Check persistent mapped drives
+  net use
+
+  # Test network path
+  Test-Path "\\server\share"
+
+Resolution Steps:
+1. Remap drive persistently:
+   net use Z: \\server\share /persistent:yes
+
+   Or via PowerShell:
+   New-PSDrive -Name Z -PSProvider FileSystem -Root \\server\share -Persist
+
+2. Force credential save:
+   cmdkey /add:<server> /user:<domain\username> /pass:<password>
+
+3. If failing after Windows Update:
+   - This is a known issue with some Windows updates
+   - Workaround: create a login script to remap drives
+   - Place in: C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\
+
+4. Check Group Policy for drive mappings:
+   gpresult /h gpreport.html
+   Start gpreport.html
+
+================================================================================
+SECTION 2: ONEDRIVE SYNC ISSUES
+================================================================================
+
+Symptoms:
+- OneDrive shows sync errors
+- Files stuck in "Syncing" state
+- OneDrive not syncing after network change
+
+Diagnostic Commands:
+  # Reset OneDrive (warning: re-syncs all files)
+  %localappdata%\Microsoft\OneDrive\onedrive.exe /reset
+
+  # Check OneDrive status
+  Get-Process -Name OneDrive
+
+Resolution Steps:
+1. Pause and resume sync:
+   - OneDrive tray icon → Pause syncing → Resume syncing
+
+2. Reset OneDrive:
+   # Run in Command Prompt:
+   %localappdata%\Microsoft\OneDrive\onedrive.exe /reset
+   # Wait 2 minutes, then manually start OneDrive
+
+3. Check storage quota at: https://onedrive.live.com
+
+4. Unlock files that are open:
+   - OneDrive cannot sync files currently open in another application
+
+Source: Microsoft Learn Windows Client Backup and Storage Documentation
+Last Updated: 2025-01-15

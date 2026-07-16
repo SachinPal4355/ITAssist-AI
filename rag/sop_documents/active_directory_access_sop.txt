@@ -1,0 +1,225 @@
+ACTIVE DIRECTORY, USER ACCOUNTS & ACCESS TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Identity and Access Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/active-directory/active-directory-overview
+Category: Access | Permissions | Active Directory | Login | Domain | Account Lockout | Password
+
+================================================================================
+SECTION 1: ACCOUNT LOCKOUT ISSUES
+================================================================================
+
+Symptoms:
+- User cannot log in — "Your account has been locked"
+- Frequent account lockouts without reason
+- "The referenced account is currently locked out" error
+
+Diagnostic Commands:
+  # Check if account is locked (run as AD admin)
+  Get-ADUser -Identity <username> -Properties LockedOut, BadLogonCount, LastBadPasswordAttempt |
+      Select-Object Name, LockedOut, BadLogonCount, LastBadPasswordAttempt
+
+  # Unlock account
+  Unlock-ADAccount -Identity <username>
+
+  # Find lockout source
+  Get-ADUser -Identity <username> -Properties * | Select-Object LockedOut, BadLogonCount, LockedOutDuration
+
+  # Find DC that locked the account
+  Get-WinEvent -ComputerName <DC_Name> -FilterHashTable @{LogName='Security'; Id=4740} |
+      Select-Object TimeCreated, Message | Select-Object -First 10
+
+Resolution Steps:
+1. Unlock the account immediately:
+   Unlock-ADAccount -Identity <username>
+
+2. Reset password to avoid re-lockout:
+   Set-ADAccountPassword -Identity <username> -NewPassword (ConvertTo-SecureString "NewP@ss123!" -AsPlainText -Force) -Reset
+
+3. Find lockout source:
+   - Check for stale credentials (old phones, tablets, mapped drives with old password)
+   - Control Panel → Credential Manager → remove outdated credentials
+   - Check scheduled tasks running with old credentials
+   - Check IIS Application Pools with old credentials
+
+4. Review lockout policy:
+   Get-ADDefaultDomainPasswordPolicy | Select-Object LockoutThreshold, LockoutDuration, LockoutObservationWindow
+
+5. Enable Fine-Grained Password Policy if needed for specific users
+
+--------------------------------------------------------------------------------
+SECTION 2: CANNOT LOG INTO DOMAIN / DOMAIN JOIN ISSUES
+--------------------------------------------------------------------------------
+
+Symptoms:
+- "The trust relationship between this workstation and the primary domain failed"
+- Cannot log in with domain credentials
+- Domain not listed in login screen
+
+Error: "The trust relationship between this workstation and the primary domain failed"
+
+Cause: Computer account password mismatch between workstation and domain.
+
+Resolution Steps:
+1. Log in with local administrator account first:
+   - Username: .\Administrator (note the dot-backslash)
+   - Use the local admin password
+
+2. Method A - Reset computer account via PowerShell (preferred):
+   # On the workstation, run as local admin:
+   Test-ComputerSecureChannel -Verbose
+   Reset-ComputerMachinePassword -Credential (Get-Credential DOMAIN\AdminUser)
+
+3. Method B - Rejoin the domain:
+   # Remove from domain first:
+   Remove-Computer -UnjoinDomainCredential (Get-Credential) -PassThru -Verbose -Restart
+   # Then rejoin:
+   Add-Computer -DomainName "yourdomain.com" -Credential (Get-Credential) -Restart
+
+4. Method C - Reset via Active Directory Users and Computers (ADUC):
+   - ADUC → Find the computer account → Right-click → Reset Account
+   - Then on workstation: Remove and rejoin domain
+
+--------------------------------------------------------------------------------
+SECTION 3: PASSWORD RESET ISSUES
+--------------------------------------------------------------------------------
+
+Symptoms:
+- User forgot domain password
+- Password expired but cannot change
+- "Your password has expired" at login
+
+Resolution Steps:
+1. Reset via Active Directory (Admin required):
+   Set-ADAccountPassword -Identity <username> -Reset -NewPassword (Read-Host -AsSecureString)
+   Set-ADUser -Identity <username> -ChangePasswordAtLogon $true
+
+2. Self-Service Password Reset (SSPR) — if configured:
+   - Visit: https://aka.ms/sspr (Microsoft Entra SSPR)
+   - Or: https://passwordreset.microsoftonline.com
+
+3. Unlock + Reset in one step:
+   Unlock-ADAccount -Identity <username>
+   Set-ADAccountPassword -Identity <username> -Reset -NewPassword (ConvertTo-SecureString "TempP@ss123!" -AsPlainText -Force)
+   Set-ADUser -Identity <username> -ChangePasswordAtLogon $true
+
+4. Check password policy:
+   Get-ADDefaultDomainPasswordPolicy
+
+--------------------------------------------------------------------------------
+SECTION 4: GROUP POLICY (GPO) ISSUES
+--------------------------------------------------------------------------------
+
+Symptoms:
+- Group Policy not applying correctly
+- Software not deploying via GPO
+- Drive mappings not appearing
+- GPO settings not taking effect
+
+Diagnostic Commands:
+  # Force GPO refresh
+  gpupdate /force
+
+  # Check GPO status and applied policies
+  gpresult /r
+
+  # Generate detailed HTML report
+  gpresult /h C:\Temp\gpreport.html
+  Start C:\Temp\gpreport.html
+
+  # Check RSoP (Resultant Set of Policy)
+  rsop.msc
+
+  # Check event logs for GPO errors
+  Get-WinEvent -LogName "Microsoft-Windows-GroupPolicy/Operational" -MaxEvents 20 |
+      Where-Object {$_.LevelDisplayName -eq "Error"} |
+      Select-Object TimeCreated, Message
+
+Resolution Steps:
+1. Force GPO refresh:
+   gpupdate /force /boot   # Forces restart if required
+
+2. Check for slow link detection:
+   - Slow network links may prevent GPO from applying
+   - In GPMC: Policy → Configure slow link detection
+
+3. Verify SYSVOL replication is working:
+   # On Domain Controller:
+   Get-DfsrBacklog -DestinationComputerName <DC_Name> -GroupName "Domain System Volume"
+
+4. Check for GPO permission issues:
+   - GPMC → GPO → Delegation tab → verify target group has Read + Apply Group Policy
+
+5. Flush DNS and re-register:
+   ipconfig /flushdns
+   ipconfig /registerdns
+
+--------------------------------------------------------------------------------
+SECTION 5: ACCESS DENIED ERRORS
+--------------------------------------------------------------------------------
+
+Symptoms:
+- "Access Denied" to shared folders or resources
+- Cannot access a specific server or application
+- Permissions appear correct but access still denied
+
+Diagnostic Commands:
+  # Check effective permissions on a folder
+  Get-Acl "\\server\share\folder" | Format-List
+
+  # Check user's group memberships
+  Get-ADUser -Identity <username> -Properties MemberOf | Select-Object -ExpandProperty MemberOf
+
+  # View token/groups (local session)
+  whoami /all
+
+Resolution Steps:
+1. Check share and NTFS permissions separately:
+   - Share permissions: \\server\share → right-click → Properties → Sharing → Permissions
+   - NTFS permissions: same path → Security tab
+
+2. Log off and back on:
+   - Group membership changes require logoff to take effect
+
+3. Use icacls to check permissions:
+   icacls "\\server\share\folder"
+
+4. Add user to correct AD security group:
+   Add-ADGroupMember -Identity "ShareAccess-Group" -Members <username>
+
+5. Check if access is being blocked by firewall:
+   Test-NetConnection -ComputerName <server> -Port 445
+
+6. Run as administrator to test:
+   - Right-click the application → Run as administrator
+
+================================================================================
+SECTION 6: USER PROFILE LOGON ISSUES
+================================================================================
+
+Symptoms:
+- "The User Profile Service failed the logon"
+- User logs in but gets a temporary profile
+- Desktop is empty / no shortcuts after login
+
+Diagnostic Commands:
+  # Check user profile registry entries
+  Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\*" |
+      Where-Object {$_.ProfileImagePath -like "*<username>*"} |
+      Select-Object PSChildName, ProfileImagePath, State
+
+Resolution Steps:
+1. Log in with a different account and repair:
+   - Navigate to C:\Users\<username>
+   - Check if profile folder exists and has content
+
+2. Fix corrupt registry profile:
+   - HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList
+   - Look for key ending in .bak → rename (remove .bak extension)
+
+3. Re-create profile:
+   - Backup C:\Users\<username> to another location
+   - Delete the old profile registry key
+   - Log back in (creates fresh profile)
+   - Copy old data back
+
+Source: Microsoft Learn - Windows Client Identity and Access Documentation
+Last Updated: 2025-01-15

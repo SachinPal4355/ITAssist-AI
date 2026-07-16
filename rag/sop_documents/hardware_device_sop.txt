@@ -1,0 +1,236 @@
+HARDWARE & DEVICE DRIVER TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Hardware and Device Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/welcome-windows-client
+Category: Hardware | Device Drivers | USB | Monitor | Keyboard | Mouse | Peripheral Devices
+
+================================================================================
+SECTION 1: DEVICE NOT RECOGNIZED / DRIVER ISSUES
+================================================================================
+
+Symptoms:
+- Device shows with yellow exclamation mark in Device Manager
+- "Unknown device" in Device Manager
+- Device not appearing in Device Manager at all
+- "Windows has stopped this device because it has reported problems. (Code 43)"
+
+Diagnostic Commands:
+  # List all devices with errors
+  Get-PnpDevice | Where-Object {$_.Status -ne "OK"} | Select-Object Name, Status, ProblemCode
+
+  # List all devices (including hidden)
+  Get-PnpDevice | Select-Object Name, Status, Class, DeviceID | Sort-Object Status
+
+  # Get specific device details
+  Get-PnpDevice -FriendlyName "*USB*" | Select-Object Name, Status, DeviceID
+
+  # Check driver version
+  Get-WmiObject Win32_PnPSignedDriver | Where-Object {$_.DeviceName -like "*<device>*"} |
+      Select-Object DeviceName, DriverVersion, DriverDate, Manufacturer
+
+Common Device Error Codes:
+  Code 10 - Device cannot start:
+    Fix: Update or reinstall the driver
+
+  Code 28 - Drivers not installed:
+    Fix: Install the correct driver from manufacturer website
+
+  Code 43 - Device reported a problem:
+    Fix: Usually USB device — try different USB port, update driver
+
+  Code 45 - Not connected (previously connected):
+    Fix: Reconnect device and scan for hardware changes
+
+  Code 52 - Invalid signature:
+    Fix: Enable Test Mode or get properly signed driver:
+      bcdedit /set testsigning on  # Only for testing — revert after
+
+Resolution Steps:
+1. Scan for hardware changes:
+   - Device Manager → right-click top node → Scan for hardware changes
+
+2. Update driver:
+   - Device Manager → right-click device → Update driver → Search automatically
+
+3. Rollback driver (if issue after driver update):
+   - Device Manager → right-click device → Properties → Driver → Roll Back Driver
+
+4. Uninstall and reinstall driver:
+   - Device Manager → right-click device → Uninstall device
+   - Check "Delete the driver software for this device"
+   - Scan for hardware changes to reinstall
+
+5. Download driver from manufacturer:
+   - Intel drivers: https://www.intel.com/content/www/us/en/download-center/home.html
+   - NVIDIA: https://www.nvidia.com/Download/index.aspx
+   - AMD: https://www.amd.com/en/support
+
+6. Use Windows Update to find drivers:
+   - Settings → Windows Update → Advanced Options → Optional Updates → Driver Updates
+
+--------------------------------------------------------------------------------
+SECTION 2: USB DEVICE NOT WORKING
+--------------------------------------------------------------------------------
+Symptoms:
+- USB device not recognized after plugging in
+- USB device works on some ports but not others
+- USB keeps disconnecting and reconnecting
+
+Diagnostic Commands:
+  # Check USB controllers
+  Get-PnpDevice -Class USB | Select-Object Name, Status
+
+  # Check USB power management
+  Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Enum\USB\*\*\Device Parameters" -Name "EnhancedPowerManagementEnabled" -ErrorAction SilentlyContinue
+
+  # USB event logs
+  Get-WinEvent -LogName "Microsoft-Windows-USB-USBHUB3-Analytic" -MaxEvents 10 -ErrorAction SilentlyContinue
+
+Resolution Steps:
+1. Try different USB port (USB 2.0 vs USB 3.0):
+   - Some devices only work on USB 2.0 ports
+
+2. Disable USB Selective Suspend:
+   - Power Options → Change plan settings → Change advanced power settings
+   - USB Settings → USB selective suspend setting → Disabled
+
+3. Update USB controllers:
+   - Device Manager → Universal Serial Bus controllers
+   - Right-click each → Update driver
+
+4. Disable USB power management:
+   - Device Manager → USB Root Hub → Properties → Power Management
+   - Uncheck "Allow the computer to turn off this device to save power"
+
+5. Check USB device with another computer to isolate if device is faulty
+
+6. Run Hardware troubleshooter:
+   msdt.exe -id DeviceDiagnostic
+
+--------------------------------------------------------------------------------
+SECTION 3: MONITOR / DISPLAY ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- Monitor not detected by Windows
+- Screen flickering or black screen
+- Wrong resolution / display settings
+- Multiple monitor setup not working
+
+Diagnostic Commands:
+  # Check display adapters
+  Get-CimInstance -ClassName Win32_VideoController | Select-Object Name, Status, VideoModeDescription, CurrentRefreshRate
+
+  # Check monitor info
+  Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams |
+      Select-Object InstanceName, MaxHorizontalImageSize, MaxVerticalImageSize
+
+  # List display outputs
+  Get-Display | Select-Object -First 5 -ErrorAction SilentlyContinue
+
+Resolution Steps:
+1. Force detect monitors:
+   - Desktop → right-click → Display Settings → scroll down → Detect
+
+2. Update display driver:
+   - Device Manager → Display adapters → right-click → Update driver
+
+3. Set correct refresh rate:
+   - Display Settings → Advanced Display → Refresh rate
+
+4. For flickering screens:
+   - Change refresh rate from 60Hz to 59Hz or vice versa
+   - Update GPU driver
+   - Check cable connections (HDMI, DisplayPort, VGA)
+
+5. Reset display scaling:
+   - Display Settings → Scale → set to 100% first, then adjust
+
+6. Fix black screen after driver install:
+   - Boot into Safe Mode: Shift + Restart → Troubleshoot → Advanced → Startup Settings
+   - In Safe Mode: Device Manager → Display adapters → Uninstall GPU driver
+   - Restart normally and reinstall correct driver
+
+--------------------------------------------------------------------------------
+SECTION 4: KEYBOARD / MOUSE NOT WORKING
+--------------------------------------------------------------------------------
+Symptoms:
+- Keyboard not responding
+- Mouse pointer frozen or jumpy
+- Wireless keyboard/mouse not connecting
+
+Diagnostic Commands:
+  # Check HID devices
+  Get-PnpDevice -Class HIDClass | Select-Object Name, Status
+
+  # Check keyboard device
+  Get-PnpDevice | Where-Object {$_.Class -eq "Keyboard"} | Select-Object Name, Status
+
+Resolution Steps:
+1. Check device in Device Manager for errors
+
+2. Unplug and replug (USB keyboards/mice):
+   - Try different USB port
+   - Connect directly to PC (not through hub)
+
+3. For wireless keyboards/mice:
+   - Replace batteries
+   - Move USB receiver closer to device
+   - Re-pair: hold connect button on device + press button on USB receiver
+
+4. For Bluetooth devices:
+   - Settings → Bluetooth → remove device → re-pair
+
+5. Update HID drivers:
+   - Device Manager → Human Interface Devices → Update drivers
+
+6. Run Keyboard Troubleshooter:
+   msdt.exe -id KeyboardDiagnostic
+
+7. If keyboard works on login screen but not after:
+   - Likely a driver issue or application intercepting input
+   - Boot into Safe Mode to isolate
+
+================================================================================
+SECTION 5: LAPTOP BATTERY / POWER ISSUES
+================================================================================
+
+Symptoms:
+- Battery not charging
+- Battery draining faster than normal
+- "Battery not detected" message
+- Laptop won't turn on without AC adapter
+
+Diagnostic Commands:
+  # Generate battery report
+  powercfg /batteryreport /output C:\Temp\battery_report.html
+  Start C:\Temp\battery_report.html
+
+  # Check power configuration
+  powercfg /list
+
+  # Check sleep/hibernate states
+  powercfg /a
+
+  # Check battery status
+  Get-CimInstance -ClassName Win32_Battery | Select-Object Name, Status, EstimatedChargeRemaining, DesignCapacity, FullChargeCapacity
+
+Resolution Steps:
+1. Check battery health via battery report:
+   powercfg /batteryreport /output C:\battery_report.html
+   # Look at "Design Capacity" vs "Full Charge Capacity" — below 40% means replace battery
+
+2. Calibrate battery:
+   - Charge to 100%
+   - Discharge completely (hibernate when low)
+   - Recharge to 100%
+
+3. Reset power plan:
+   powercfg -restoredefaultschemes
+
+4. Reinstall battery driver:
+   - Device Manager → Batteries → Microsoft ACPI-Compliant Control Method Battery → Uninstall
+   - Scan for hardware changes to reinstall
+
+5. Check power adapter with another compatible adapter
+
+Source: Microsoft Learn - Windows Client Hardware Documentation
+Last Updated: 2025-01-15

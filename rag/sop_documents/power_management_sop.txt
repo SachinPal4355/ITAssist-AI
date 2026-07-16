@@ -1,0 +1,208 @@
+WINDOWS POWER MANAGEMENT & SLEEP/HIBERNATE TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Documentation
+Category: Power | Sleep | Hibernate | Shutdown | Battery | Power Plan | Wake Issues
+
+================================================================================
+SECTION 1: SLEEP / HIBERNATE ISSUES
+================================================================================
+
+Symptoms:
+- PC won't go to sleep
+- PC wakes from sleep immediately / randomly
+- PC won't wake from sleep (black screen)
+- Laptop doesn't sleep when lid is closed
+- "Windows cannot hibernate" error
+- Sleep mode is not available
+
+Diagnostic Commands:
+  # Check available sleep states
+  powercfg /a
+
+  # Generate sleep/power report
+  powercfg /sleepstudy /output C:\Temp\sleepstudy.html
+  Start C:\Temp\sleepstudy.html
+
+  # Check what is preventing sleep
+  powercfg /requests
+
+  # Check devices that can wake PC
+  powercfg /devicequery wake_armed
+
+  # List devices that recently woke PC
+  powercfg /lastwake
+
+  # Full power efficiency diagnostics
+  powercfg /energy /output C:\Temp\energy_report.html /duration 60
+  Start C:\Temp\energy_report.html
+
+--------------------------------------------------------------------------------
+ISSUE 1: PC WAKING FROM SLEEP RANDOMLY
+--------------------------------------------------------------------------------
+Resolution Steps:
+1. Find what last woke the PC:
+   powercfg /lastwake
+
+2. Check what is keeping PC awake:
+   powercfg /requests
+
+3. Disable wake timers:
+   # In Power Options → Change plan settings → Change advanced power settings
+   # Sleep → Allow wake timers → Disable
+
+4. Disable network adapter from waking PC:
+   - Device Manager → Network Adapters → right-click → Properties → Power Management
+   - Uncheck "Allow this device to wake the computer"
+   - Uncheck "Only allow a magic packet to wake the computer"
+
+5. Disable keyboard/mouse from waking PC:
+   # For keyboard:
+   $Keyboard = Get-WmiObject MSPower_DeviceWakeEnable -Namespace root\wmi |
+       Where-Object {$_.InstanceName -like "*HID*Keyboard*"}
+   $Keyboard.Enable = $false
+   $Keyboard.Put()
+
+6. Fix maintenance wake tasks:
+   # Check scheduled tasks that wake the PC:
+   Get-ScheduledTask | Where-Object {$_.Settings.WakeToRun -eq $true} |
+       Select-Object TaskName, TaskPath
+
+   # Disable wake on specific task:
+   $task = Get-ScheduledTask -TaskName "<TaskName>"
+   $task.Settings.WakeToRun = $false
+   Set-ScheduledTask $task
+
+--------------------------------------------------------------------------------
+ISSUE 2: PC WON'T WAKE FROM SLEEP (BLACK SCREEN)
+--------------------------------------------------------------------------------
+Symptoms:
+- Monitor stays black after pressing key or moving mouse
+- Fans spinning but no display
+- Have to hard restart to recover
+
+Resolution Steps:
+1. Check GPU driver (most common cause):
+   - Update display driver
+   - If recent update caused this: roll back driver
+
+2. Disable and re-enable display adapter:
+   # (Do this while awake, as preventative)
+   - Device Manager → Display adapters → Disable → Enable
+
+3. Disable hybrid sleep:
+   - Power Options → Change plan settings → Change advanced power settings
+   - Sleep → Allow hybrid sleep → Off
+
+4. Change sleep mode from S3 to S1 (or vice versa):
+   - Some hardware incompatible with certain sleep states
+   # Check available states:
+   powercfg /a
+
+5. Update BIOS/UEFI firmware:
+   - Check manufacturer website for BIOS updates
+   - Sleep-wake issues are often fixed in firmware updates
+
+6. Disable "Fast Startup":
+   - Control Panel → Power Options → Choose what the power buttons do
+   - Turn off "Turn on fast startup (recommended)"
+
+--------------------------------------------------------------------------------
+ISSUE 3: HIBERNATION NOT AVAILABLE
+--------------------------------------------------------------------------------
+Resolution Steps:
+1. Enable hibernation:
+   powercfg /hibernate on
+
+2. Check if hiberfil.sys exists:
+   Get-Item "C:\hiberfil.sys" -Force
+
+3. Set hibernate file size:
+   powercfg /hibernatesize 80  # 80% of RAM
+
+4. If hibernate option missing from power menu:
+   - Control Panel → Power Options → Change what the power buttons do
+   - Check "Hibernate" under "Shutdown settings"
+
+5. Ensure enough disk space for hibernate file:
+   # Hibernate file = size of installed RAM
+   # Need at least that much free space on C:
+
+--------------------------------------------------------------------------------
+SECTION 2: POWER PLANS
+================================================================================
+
+View and Manage Power Plans:
+  # List all power plans
+  powercfg /list
+
+  # Set Balanced (recommended):
+  powercfg /setactive SCHEME_BALANCED
+
+  # Set High Performance:
+  powercfg /setactive SCHEME_MIN
+
+  # Set Power Saver:
+  powercfg /setactive SCHEME_MAX
+
+  # Restore default power schemes:
+  powercfg /restoredefaultschemes
+
+  # Create custom power plan:
+  powercfg /duplicatescheme SCHEME_BALANCED <new-guid>
+
+Common Power Plan Issues:
+  1. Power plan resets to Balanced after restart:
+     - Group Policy may be enforcing a specific plan
+     - Check: gpresult /r | Select-String "Power"
+
+  2. High Performance not available:
+     - Windows 11: Only "Balanced" and "Power Saver" shown by default
+     - To show High Performance:
+       powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+
+  3. Ultimate Performance plan (for workstations):
+     powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
+
+--------------------------------------------------------------------------------
+SECTION 3: BATTERY MANAGEMENT (LAPTOPS)
+================================================================================
+
+Battery Conservation Mode (Windows 11):
+  # Enable Battery Saver manually:
+  # Settings → System → Power → Battery saver
+
+  # Set battery saver threshold (e.g., 20%):
+  powercfg /setdcvalueindex SCHEME_CURRENT SUB_ENERGYSAVER ESBATTTHRESHOLD 20
+
+Battery Report:
+  powercfg /batteryreport /output C:\Temp\battery_report.html
+  Start C:\Temp\battery_report.html
+  # Look for: Design Capacity vs Full Charge Capacity
+  # <60% of design = replace battery
+
+Charge Thresholds (for battery longevity):
+  # Some manufacturers support limiting charge to 80% via OEM tools:
+  # Lenovo: Lenovo Vantage → Power → Battery Charge Threshold
+  # Dell: Dell Command | Configure
+  # HP: HP Omen Gaming Hub
+
+--------------------------------------------------------------------------------
+SECTION 4: CONNECTED STANDBY / MODERN STANDBY
+================================================================================
+
+Modern Standby (S0 Low Power Idle) Issues:
+  - New laptops (2020+) use Modern Standby instead of traditional S3 sleep
+  - Can drain battery even when "asleep"
+  - Background apps continue to run (Teams, emails sync)
+
+  # Check if device uses Modern Standby:
+  powercfg /a
+  # Look for "S0 Low Power Idle" instead of "S3 (Suspend to RAM)"
+
+  # Check network activity during standby:
+  powercfg /sleepstudy
+
+  # Disable network during Modern Standby:
+  powercfg /setdcvalueindex SCHEME_CURRENT 2a737441-1930-4402-8d77-b2bebba308a3 d8742dcb-3e6a-4b3c-b3fe-374623cdcf06 0
+
+Source: Microsoft Learn - Windows Client Power Management Documentation
+Last Updated: 2025-01-15

@@ -1,0 +1,217 @@
+WIRELESS NETWORKING & 802.1X AUTHENTICATION SOP
+Source: Microsoft Learn - Windows Client Networking Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/networking/networking-overview
+Category: Wireless | WiFi | 802.1X | WPA2 | Corporate WiFi | RADIUS | NPS | Wireless Adapter
+
+================================================================================
+SECTION 1: CANNOT CONNECT TO WIFI
+================================================================================
+
+Symptoms:
+- WiFi networks not showing in network list
+- "Can't connect to this network" error
+- WiFi connects but shows "No Internet"
+- WiFi keeps dropping connection
+- Cannot find hidden WiFi network
+
+Diagnostic Commands:
+  # Check WiFi adapter status
+  Get-NetAdapter | Where-Object {$_.InterfaceDescription -like "*Wireless*" -or $_.InterfaceDescription -like "*WiFi*"} |
+      Select-Object Name, Status, LinkSpeed, MediaConnectionState
+
+  # Show all available WiFi networks
+  netsh wlan show networks mode=bssid
+
+  # Show saved WiFi profiles
+  netsh wlan show profiles
+
+  # Show WiFi driver details
+  netsh wlan show drivers
+
+  # Check WiFi signal strength
+  netsh wlan show interfaces
+
+  # Show connection statistics
+  netsh wlan show statistics
+
+Common Error Codes:
+  "Can't connect to this network":
+    - Saved network profile corrupted or wrong password stored
+    
+  "Limited connectivity" / "No Internet, Secured":
+    - IP address conflict or DHCP failure
+    
+  "Authentication failed":
+    - Wrong password or 802.1X certificate issue
+
+Resolution Steps:
+1. Forget and reconnect to WiFi:
+   netsh wlan delete profile name="<NetworkName>"
+   # Then manually reconnect from WiFi settings
+
+2. Release and renew IP address:
+   ipconfig /release
+   ipconfig /renew
+   ipconfig /flushdns
+
+3. Reset WiFi adapter:
+   # Via Device Manager: Disable → Enable adapter
+   Disable-NetAdapter -Name "Wi-Fi" -Confirm:$false
+   Start-Sleep -Seconds 3
+   Enable-NetAdapter -Name "Wi-Fi" -Confirm:$false
+
+4. Reset network stack:
+   netsh int ip reset
+   netsh winsock reset
+   ipconfig /flushdns
+   # Restart required after these commands
+
+5. Update WiFi adapter driver:
+   - Device Manager → Network Adapters → right-click WiFi adapter → Update driver
+
+6. Set DNS manually if DHCP DNS is failing:
+   Set-DnsClientServerAddress -InterfaceAlias "Wi-Fi" -ServerAddresses ("8.8.8.8", "8.8.4.4")
+
+--------------------------------------------------------------------------------
+SECTION 2: 802.1X ENTERPRISE WIFI (CORPORATE NETWORK)
+--------------------------------------------------------------------------------
+
+Symptoms:
+- Cannot connect to corporate WiFi
+- "Authentication timeout" error
+- Certificate error when connecting to enterprise WiFi
+- WiFi connects at home but not at office
+
+802.1X Overview:
+  Corporate WiFi uses 802.1X (IEEE standard) with:
+  - RADIUS server (NPS) for authentication
+  - WPA2-Enterprise or WPA3-Enterprise security
+  - Certificate-based or username/password (PEAP-MSCHAPv2) authentication
+
+Diagnostic Commands:
+  # Check 802.1X event logs
+  Get-WinEvent -LogName "Microsoft-Windows-WLAN-AutoConfig/Operational" -MaxEvents 20 |
+      Where-Object {$_.LevelDisplayName -ne "Information"} |
+      Select-Object TimeCreated, LevelDisplayName, Message
+
+  # Check available certificates
+  Get-ChildItem -Path Cert:\LocalMachine\My | Select-Object Subject, Issuer, NotAfter, Thumbprint
+
+  # Export WiFi profiles for backup
+  netsh wlan export profile folder=C:\Temp\
+
+  # Check NPS server reachability (port 1812/1813)
+  Test-NetConnection -ComputerName <RADIUS_Server> -Port 1812
+
+Resolution Steps for 802.1X Issues:
+1. Verify certificate is installed:
+   - User cert: Cert:\CurrentUser\My
+   - Machine cert: Cert:\LocalMachine\My
+   - CA cert must be in: Cert:\LocalMachine\Root (Trusted Root CAs)
+   Check in MMC:
+     certmgr.msc (user certs)
+     certlm.msc (machine certs)
+
+2. Re-enroll machine certificate:
+   - Open: certlm.msc
+   - Personal → Certificates → right-click → All Tasks → Request New Certificate
+   - Select the domain computer template
+
+3. Configure WiFi profile manually for 802.1X:
+   - Network and Sharing Center → Set up a new connection
+   - Manually connect to wireless network
+   - Security type: WPA2-Enterprise
+   - Encryption: AES
+   - Network authentication method: Microsoft: Protected EAP (PEAP)
+   - Configure: server certificate validation, authentication method
+
+4. Check NPS (Network Policy Server) logs on server:
+   - Event Viewer → Custom Views → ServerRoles → Network Policy and Access Services
+   - Look for "Reason Code" in rejected auth entries
+
+5. Force Group Policy update to re-push WiFi profiles:
+   gpupdate /force
+
+6. Export and reimport WiFi profile:
+   netsh wlan export profile name="<NetworkName>" folder=C:\Temp
+   netsh wlan add profile filename="C:\Temp\<NetworkName>.xml" user=all
+
+--------------------------------------------------------------------------------
+SECTION 3: WIFI DROPPING / INTERMITTENT CONNECTION
+--------------------------------------------------------------------------------
+Symptoms:
+- WiFi disconnects every few minutes
+- Browser shows "connection refused" intermittently
+- VPN drops due to underlying WiFi instability
+
+Diagnostic Commands:
+  # Monitor WiFi connection events
+  Get-WinEvent -LogName "Microsoft-Windows-WLAN-AutoConfig/Operational" -MaxEvents 30 |
+      Select-Object TimeCreated, Id, LevelDisplayName, Message | Format-Table -Wrap
+
+  # Check for interference (other networks on same channel)
+  netsh wlan show networks mode=bssid | Select-String "SSID|Channel|Signal"
+
+  # Check power management on WiFi adapter
+  Get-NetAdapterPowerManagement -Name "Wi-Fi"
+
+Resolution Steps:
+1. Disable WiFi power saving:
+   - Device Manager → Network Adapters → WiFi adapter → Properties → Power Management
+   - Uncheck "Allow the computer to turn off this device to save power"
+   
+   Or via PowerShell:
+   Set-NetAdapterPowerManagement -Name "Wi-Fi" -WakeOnMagicPacket Disabled -WakeOnPattern Disabled
+
+2. Change WiFi channel (if you control the router):
+   - Log into router → Wireless Settings
+   - Use WiFi analyzer app to find least congested channel
+   - Set 5GHz: channels 36, 40, 44, 48 (non-overlapping)
+   - Set 2.4GHz: channels 1, 6, or 11 (non-overlapping)
+
+3. Switch to 5GHz band:
+   - Settings → WiFi → click the network → Properties
+   - Choose 5GHz band in adapter settings if available
+
+4. Adjust roaming aggressiveness:
+   - Device Manager → WiFi adapter → Advanced tab
+   - "Roaming Aggressiveness" → set to "Highest"
+
+5. Update WiFi driver to latest version from manufacturer (NOT Windows Update)
+
+6. Check for WiFi dead zones by moving closer to access point
+
+================================================================================
+SECTION 4: WIFI ADAPTER MISSING FROM DEVICE MANAGER
+================================================================================
+Symptoms:
+- WiFi adapter not showing in Device Manager
+- No WiFi option in Settings
+- "No wireless hardware was found" message
+
+Resolution Steps:
+1. Show hidden devices in Device Manager:
+   - Device Manager → View → Show hidden devices
+   - Check if WiFi adapter appears as hidden/disabled
+
+2. Check if WiFi is disabled in BIOS/UEFI:
+   - Restart → Enter BIOS (F2/F10/Del)
+   - Look for "Wireless LAN" setting and ensure enabled
+
+3. Check physical WiFi switch:
+   - Some laptops have physical WiFi on/off switch or Fn key shortcut
+   - Check Fn+F5, Fn+F8, or dedicated WiFi key
+
+4. Reinstall WiFi adapter driver:
+   - Download driver from laptop manufacturer website
+   - Uninstall current driver → install downloaded driver
+
+5. Check if adapter is recognized via USB/PCI:
+   - Device Manager → Universal Serial Bus / Other devices
+   - May appear as "Unknown Device" — identify by hardware ID
+
+6. Run Hardware and Devices troubleshooter:
+   msdt.exe -id DeviceDiagnostic
+
+Source: Microsoft Learn - Windows Client Wireless Networking Documentation
+Last Updated: 2025-01-15

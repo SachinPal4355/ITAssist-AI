@@ -1,0 +1,169 @@
+WINDOWS CLIENT PERFORMANCE TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Troubleshooting Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/performance-overview
+Category: Performance | Slow Performance | Blue Screen | Boot Issues
+
+================================================================================
+SECTION 1: SLOW PERFORMANCE OVERVIEW
+================================================================================
+
+Windows PCs can become slow for many reasons. This SOP covers the most common
+causes and their resolutions for IT professionals supporting enterprise devices.
+
+SUBCATEGORIES:
+- Applications causing slowness
+- Blue Screen / Bugcheck events
+- No Boot issues (non-BugCheck)
+- Performance monitoring tools
+- Servicing-related slowness
+- Shutdown is slow or hangs
+- General Slow Performance
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 1: CHECK DISK USAGE
+--------------------------------------------------------------------------------
+High disk usage is one of the most common causes of slow Windows performance.
+
+Symptoms:
+- Task Manager shows 100% disk usage
+- Laptop freezes or becomes unresponsive
+- Applications take long to open
+
+Diagnostic Commands (Run as Administrator in PowerShell):
+
+  # Check all volumes and free space
+  Get-Volume
+
+  # Check all drives with used/free space
+  Get-PSDrive -PSProvider FileSystem
+
+  # Check disk health
+  Get-PhysicalDisk | Select-Object FriendlyName, OperationalStatus, HealthStatus
+
+Resolution Steps:
+1. Open Task Manager → Performance → Disk → identify which process uses disk heavily
+2. Run Disk Cleanup:
+   - Press Win+R → type cleanmgr → press Enter
+   - Select C: drive → check all boxes → click "Clean up system files"
+3. Clear Temp files:
+   - Press Win+R → type %temp% → delete all files (skip files in use)
+   - Press Win+R → type temp → delete all files
+4. Disable Windows Search indexing temporarily:
+   - Services → Windows Search → Stop
+5. Check for Windows Update running in background:
+   - Task Manager → check for TiWorker.exe or svchost.exe high disk usage
+
+PowerShell Cleanup Script:
+  Remove-Item $env:TEMP\* -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 2: CHECK CPU USAGE
+--------------------------------------------------------------------------------
+Symptoms:
+- Fan running constantly at high speed
+- System feels hot and sluggish
+- Applications become unresponsive
+
+Diagnostic Commands:
+  # Top CPU consuming processes
+  Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Name, CPU, WorkingSet
+
+  # Check for runaway processes
+  Get-Process | Where-Object {$_.CPU -gt 100} | Select-Object Name, Id, CPU
+
+Resolution Steps:
+1. Open Task Manager → Processes → sort by CPU → identify high usage process
+2. If it is antivirus: schedule scans for off-hours
+3. If it is svchost.exe: check which service it hosts via Resource Monitor
+4. Disable startup programs:
+   - Task Manager → Startup tab → disable non-essential programs
+5. Run System File Checker:
+   sfc /scannow
+6. Run DISM health restore:
+   DISM /Online /Cleanup-Image /RestoreHealth
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 3: CHECK RAM / MEMORY USAGE
+--------------------------------------------------------------------------------
+Symptoms:
+- Device runs fine initially then slows after hours of use
+- "Your PC ran into a problem" errors
+- Applications crash with out-of-memory messages
+
+Diagnostic Commands:
+  # Total and available RAM
+  Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize, FreePhysicalMemory
+
+  # Memory-hungry processes
+  Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 10 Name, @{N='RAM(MB)';E={[math]::Round($_.WorkingSet/1MB,2)}}
+
+Resolution Steps:
+1. Increase virtual memory (page file):
+   - System Properties → Advanced → Performance Settings → Advanced → Virtual Memory
+   - Set to: Initial 1.5x RAM, Maximum 3x RAM
+2. Identify memory leaks: restart frequently-used applications
+3. Run Windows Memory Diagnostic:
+   - Press Win+R → type mdsched → restart and test
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 4: BLUE SCREEN / BUGCHECK ANALYSIS
+--------------------------------------------------------------------------------
+Symptoms:
+- System crashes with blue screen
+- Error codes like DRIVER_IRQL_NOT_LESS_OR_EQUAL, MEMORY_MANAGEMENT, etc.
+
+Resolution Steps:
+1. Note the stop code displayed on screen
+2. Check Event Viewer:
+   - Windows Logs → System → filter for Critical/Error events
+3. Analyze mini-dumps:
+   - C:\Windows\Minidump\ folder contains crash dump files
+4. Run Driver Verifier to identify bad drivers:
+   verifier /standard /all
+5. Update or rollback recently installed drivers
+6. Common Stop Codes:
+   - 0x0000007E: SYSTEM_THREAD_EXCEPTION - usually a driver issue
+   - 0x0000003B: SYSTEM_SERVICE_EXCEPTION - update drivers/Windows
+   - 0x000000EF: CRITICAL_PROCESS_DIED - run sfc /scannow
+
+--------------------------------------------------------------------------------
+DIAGNOSTIC STEP 5: SLOW SHUTDOWN
+--------------------------------------------------------------------------------
+Symptoms:
+- Windows takes more than 60 seconds to shut down
+- Screen stays on "Shutting down..." for a long time
+
+Resolution Steps:
+1. Check for applications blocking shutdown in Event Viewer
+2. Reduce shutdown timeout:
+   HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control
+   WaitToKillServiceTimeout → set to 5000 (5 seconds)
+3. Disable Fast Startup if causing issues:
+   Power Options → Choose what the power buttons do → Turn off fast startup
+
+================================================================================
+SECTION 2: PERFORMANCE MONITORING TOOLS
+================================================================================
+
+Built-in Tools:
+1. Task Manager (taskmgr) - real-time CPU, Memory, Disk, Network
+2. Resource Monitor (resmon) - detailed per-process resource usage
+3. Performance Monitor (perfmon) - historical data collection and analysis
+4. Reliability Monitor - system stability history
+5. Event Viewer - logs for crashes, errors, warnings
+
+PowerShell Monitoring Commands:
+  # CPU usage percentage
+  (Get-CimInstance CIM_Processor).LoadPercentage
+
+  # Memory usage
+  $os = Get-CimInstance Win32_OperatingSystem
+  [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize * 100, 2)
+
+  # Disk read/write speeds
+  Get-Counter '\PhysicalDisk(*)\Disk Read Bytes/sec'
+  Get-Counter '\PhysicalDisk(*)\Disk Write Bytes/sec'
+
+Source: Microsoft Learn Windows Client Performance Documentation
+Last Updated: 2025-01-15

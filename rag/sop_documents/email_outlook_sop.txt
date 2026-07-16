@@ -1,0 +1,187 @@
+EMAIL & OUTLOOK TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Application Management Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/application-management-overview
+Category: Email | Outlook | Office 365 | Exchange | Calendar | PST
+
+================================================================================
+SECTION 1: OUTLOOK NOT OPENING / CRASHING
+================================================================================
+
+Symptoms:
+- Outlook crashes immediately on launch
+- "Microsoft Outlook has stopped working"
+- Outlook opens but shows blank screen
+- Outlook stuck on "Loading Profile..."
+
+Diagnostic Commands:
+  # Check Outlook version and Office installation
+  Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+      Where-Object {$_.DisplayName -like "*Microsoft Office*"} |
+      Select-Object DisplayName, DisplayVersion
+
+  # Check Outlook processes running
+  Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue
+
+  # Check Office license status
+  cscript "C:\Program Files\Microsoft Office\Office16\OSPP.VBS" /dstatus
+
+Resolution Steps:
+1. Start Outlook in Safe Mode:
+   - Press Win+R → type: outlook.exe /safe → press Enter
+   - If Outlook opens in safe mode, an add-in is causing the crash
+
+2. Disable all COM add-ins:
+   - Outlook → File → Options → Add-ins → COM Add-ins → Go
+   - Uncheck all add-ins → restart Outlook
+
+3. Rebuild Outlook Profile:
+   - Control Panel → Mail → Show Profiles → Add
+   - Create new profile → set as default
+
+4. Repair Office Installation:
+   - Control Panel → Programs → Microsoft Office → Change → Quick Repair
+   - If Quick Repair fails: Online Repair
+
+5. Run Outlook with no customizations:
+   outlook.exe /cleanviews
+   outlook.exe /resetnavpane
+   outlook.exe /cleanreminders
+
+6. Delete Outlook navigation cache:
+   - Delete: %APPDATA%\Microsoft\Outlook\*.xml
+
+--------------------------------------------------------------------------------
+ISSUE 2: OUTLOOK NOT SYNCING / EMAILS NOT RECEIVING
+--------------------------------------------------------------------------------
+Symptoms:
+- Emails stuck in Outbox
+- New emails not appearing in Inbox
+- "Trying to connect..." status bar
+- "Disconnected" status in Outlook
+
+Diagnostic Commands:
+  # Test Exchange/M365 connectivity
+  Test-NetConnection -ComputerName outlook.office365.com -Port 443
+
+  # Check Microsoft 365 service status
+  # Visit: https://status.office365.com
+
+Resolution Steps:
+1. Check network connectivity:
+   - Verify internet is working (ping 8.8.8.8)
+   - Test access to: https://outlook.office.com
+
+2. Re-enter credentials:
+   - Control Panel → Credential Manager → Windows Credentials
+   - Remove all Microsoft/Office credentials
+   - Restart Outlook and re-enter credentials
+
+3. Force send/receive:
+   - Outlook → Send/Receive → Send/Receive All Folders (F9)
+
+4. If using cached mode, rebuild OST file:
+   - File → Account Settings → Data Files
+   - Note the .ost file location
+   - Close Outlook
+   - Delete/rename the .ost file
+   - Restart Outlook (rebuilds OST automatically — may take time)
+
+5. Update Outlook:
+   - File → Office Account → Update Options → Update Now
+
+6. Re-create email account:
+   - File → Add Account → walk through wizard
+
+--------------------------------------------------------------------------------
+ISSUE 3: CALENDAR SYNC ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- Meetings not appearing in calendar
+- Calendar not syncing with Teams
+- Meeting invitations not received
+
+Resolution Steps:
+1. Reset calendar view:
+   outlook.exe /resetfolders
+
+2. Clear calendar cache:
+   - Outlook → File → Options → Calendar
+   - Click "Empty Cache" for shared calendars
+
+3. Re-sync Shared Calendars:
+   - Remove the shared calendar and re-add it
+
+4. Check Teams-Outlook integration:
+   - Teams → Settings → Calendar → ensure "Register Teams as the default chat app for Office" is enabled
+
+--------------------------------------------------------------------------------
+ISSUE 4: OUTLOOK PST FILE ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- "Cannot open the Outlook data file (.pst)" error
+- PST file corrupted
+- Outlook data file not found
+
+Diagnostic Commands:
+  # Find PST files on the system
+  Get-ChildItem -Path C:\ -Recurse -Filter "*.pst" -ErrorAction SilentlyContinue |
+      Select-Object FullName, @{N='Size(MB)';E={[math]::Round($_.Length/1MB,1)}}
+
+Resolution Steps:
+1. Repair PST using SCANPST.EXE:
+   - Location: C:\Program Files\Microsoft Office\root\Office16\SCANPST.EXE
+   - Browse to the .pst file → click Start
+   - Run multiple times until no errors
+
+2. Create new PST file:
+   - Outlook → File → Account Settings → Data Files → Add
+   - Redirect existing data to new PST
+
+3. Compact PST file (to reduce size):
+   - Outlook → File → Account Settings → Data Files
+   - Select PST → Settings → Compact Now
+
+================================================================================
+SECTION 2: EMAIL CONFIGURATION
+================================================================================
+
+Office 365 (M365) Connection Settings:
+  Server: outlook.office365.com
+  Port: 993 (IMAP with SSL) or 995 (POP3 with SSL)
+  SMTP: smtp.office365.com Port 587 (TLS)
+  Exchange: Autodiscover via autodiscover.yourdomain.com
+
+PowerShell — Test Exchange Autodiscover:
+  # Requires Exchange Online PowerShell module
+  Test-OutlookWebServicesConnectivity -Identity user@domain.com
+
+--------------------------------------------------------------------------------
+ISSUE 5: MICROSOFT TEAMS / OUTLOOK INTEGRATION
+--------------------------------------------------------------------------------
+Symptoms:
+- Teams add-in not showing in Outlook
+- Meeting links not being created in Teams format
+- Status not syncing between Teams and Outlook
+
+Resolution Steps:
+1. Check Teams add-in is enabled:
+   - Outlook → File → Options → Add-ins
+   - Look for "Microsoft Teams Meeting Add-in for Microsoft Office"
+   - If disabled, enable and restart Outlook
+
+2. Repair Teams:
+   - Task Manager → End all Teams processes
+   - Windows Settings → Apps → Microsoft Teams → Advanced Options → Repair
+
+3. Sign out and back in to Teams:
+   - Teams → profile picture → Sign out
+   - Sign back in with corporate account
+
+4. Re-register Teams COM add-in:
+   # Run in PowerShell as Administrator:
+   $TeamsPath = "$env:LOCALAPPDATA\Microsoft\Teams"
+   Get-Process teams -ErrorAction SilentlyContinue | Stop-Process -Force
+   Start-Process "$TeamsPath\current\Teams.exe"
+
+Source: Microsoft Learn - Application Management & Email Documentation
+Last Updated: 2025-01-15

@@ -1,0 +1,238 @@
+SOFTWARE INSTALLATION & APPLICATION MANAGEMENT SOP
+Source: Microsoft Learn - Windows Client Application Management Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/application-management/application-management-overview
+Category: Software | Application | Installation | Crash | Compatibility | MSI | Microsoft 365
+
+================================================================================
+SECTION 1: SOFTWARE INSTALLATION FAILURES
+================================================================================
+
+Symptoms:
+- "Error 1603: A fatal error occurred during installation"
+- "This app can't run on your PC"
+- Installation rolls back without completing
+- "The Windows Installer Service could not be accessed"
+- Software shows in Programs but doesn't work after install
+
+Diagnostic Commands:
+  # Check Windows Installer service
+  Get-Service -Name msiserver | Select-Object Status, StartType
+
+  # List installed software
+  Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+      Select-Object DisplayName, DisplayVersion, Publisher, InstallDate |
+      Sort-Object DisplayName
+
+  # Check 32-bit software
+  Get-ItemProperty HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* |
+      Select-Object DisplayName, DisplayVersion, Publisher |
+      Sort-Object DisplayName
+
+  # Check pending installations/reboots
+  Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"
+
+Common MSI Error Codes:
+  1603 - Fatal error: Check %TEMP% for installer logs, run as admin
+  1618 - Another installation is running: Wait and retry
+  1619 - Package not found: Check file path, re-download
+  1638 - Product already installed: Uninstall first
+  1720 - Script error: Disable antivirus temporarily, re-run
+  1722 - Custom action failure: Check install log in %TEMP%
+
+Resolution Steps:
+1. Run installer as Administrator:
+   - Right-click installer → Run as administrator
+
+2. Check for pending reboot:
+   Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending"
+   # If True — reboot before installing
+
+3. Restart Windows Installer service:
+   Stop-Service msiserver -Force
+   Start-Service msiserver
+
+4. Clean temp folder before installing:
+   Remove-Item $env:TEMP\* -Recurse -Force -ErrorAction SilentlyContinue
+
+5. Disable antivirus temporarily:
+   Set-MpPreference -DisableRealtimeMonitoring $true
+   # Install software
+   Set-MpPreference -DisableRealtimeMonitoring $false
+
+6. Enable verbose MSI logging:
+   msiexec /i "package.msi" /L*v "C:\Temp\install_log.txt"
+   # Review log for exact failure point
+
+7. Use MSICUU2 (Microsoft Cleanup Utility) for stubborn installations:
+   # Or: Settings → Apps → uninstall any partial install first
+
+8. For 0x80070005 (Access Denied) errors:
+   - Take ownership of installation directory
+   - Run as SYSTEM account if needed via PSExec:
+     psexec -s msiexec /i package.msi
+
+--------------------------------------------------------------------------------
+SECTION 2: APPLICATION CRASHES AND ERRORS
+--------------------------------------------------------------------------------
+Symptoms:
+- Application crashes immediately on launch
+- "Application has stopped working" error
+- Application freezes after a few minutes
+- Missing DLL errors
+
+Diagnostic Commands:
+  # Check Windows Event Log for application crashes
+  Get-WinEvent -LogName Application -MaxEvents 20 |
+      Where-Object {$_.LevelDisplayName -eq "Error"} |
+      Select-Object TimeCreated, Source, Message |
+      Format-Table -Wrap
+
+  # Check for specific application crashes
+  Get-WinEvent -LogName "Application" -FilterXPath "*[System[EventID=1000]]" -MaxEvents 10 |
+      Select-Object TimeCreated, Message | Format-Table -Wrap
+
+  # Check .NET runtime errors
+  Get-WinEvent -LogName "Application" -FilterXPath "*[System[Provider[@Name='.NET Runtime']]]" -MaxEvents 5
+
+  # Check for missing DLL dependencies
+  Get-ChildItem "C:\Windows\System32" -Filter "*.dll" | Where-Object {$_.Name -like "*vcruntime*"}
+
+Common Causes and Fixes:
+
+Missing Visual C++ Redistributable:
+  - Download and install all versions from Microsoft:
+    https://aka.ms/vs/17/release/vc_redist.x64.exe
+    https://aka.ms/vs/17/release/vc_redist.x86.exe
+
+Missing .NET Framework:
+  - Settings → Apps → Optional Features → .NET Framework
+  - Or: Install from https://dotnet.microsoft.com/download
+
+Application Compatibility:
+  - Right-click app → Properties → Compatibility
+  - "Run this program in compatibility mode for Windows 8"
+  - Run as administrator
+
+Resolution Steps:
+1. Run SFC to repair corrupt system files:
+   sfc /scannow
+
+2. Reinstall Visual C++ Redistributables:
+   # Download and install all VC++ versions (2010, 2012, 2013, 2015-2022)
+
+3. Repair or reinstall the application:
+   - Control Panel → Programs → select app → Change/Repair
+
+4. Clear application cache:
+   - %APPDATA%\<AppName>\ — delete cache folder
+   - %LOCALAPPDATA%\<AppName>\ — delete cache folder
+
+5. Check Application Event Log for crash details:
+   - Event Viewer → Windows Logs → Application → filter by Error/Critical
+
+6. Test in a new user profile to isolate if profile-specific
+
+--------------------------------------------------------------------------------
+SECTION 3: MICROSOFT 365 APPS ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- Word, Excel, PowerPoint not opening
+- Office activation failed
+- "Product Deactivated" message
+- Microsoft 365 subscription expired error
+
+Diagnostic Commands:
+  # Check Office version
+  Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* |
+      Where-Object {$_.DisplayName -like "*Microsoft 365*" -or $_.DisplayName -like "*Microsoft Office*"} |
+      Select-Object DisplayName, DisplayVersion
+
+  # Check Office license status
+  cscript "C:\Program Files\Microsoft Office\Office16\OSPP.VBS" /dstatus
+
+  # Check for Office Click-to-Run
+  Get-Service -Name ClickToRunSvc | Select-Object Status
+
+Resolution Steps:
+1. Fix Office activation:
+   - Open any Office app → File → Account → Activate Product
+   - Sign in with licensed Microsoft account
+
+2. Repair Office (Quick):
+   - Control Panel → Programs → Microsoft 365 → Change → Quick Repair
+
+3. Repair Office (Online):
+   - Control Panel → Programs → Microsoft 365 → Change → Online Repair
+   - More thorough, requires internet, takes 10-30 min
+
+4. Reset Office activation:
+   # Run as administrator:
+   cscript "C:\Program Files\Microsoft Office\Office16\OSPP.VBS" /dstatus
+   cscript "C:\Program Files\Microsoft Office\Office16\OSPP.VBS" /unpkey:<last 5 chars of key>
+   # Then re-activate
+
+5. If Office keeps asking for activation in corporate:
+   - Issue usually with Azure AD/Entra ID token
+   - Sign out of all Office apps → sign back in
+   - Check if user has valid M365 license in admin portal
+
+6. Fix disabled Office add-ins:
+   - Open Office app → File → Options → Add-ins
+   - Manage: Disabled items → Enable
+
+--------------------------------------------------------------------------------
+SECTION 4: APPLICATION COMPATIBILITY (OLDER SOFTWARE)
+--------------------------------------------------------------------------------
+Symptoms:
+- 16-bit application won't run on 64-bit Windows
+- Old application not compatible with Windows 11
+- Application requires Internet Explorer (not available in Windows 11)
+
+Resolution Steps:
+1. Use compatibility mode:
+   - Right-click app → Properties → Compatibility
+   - Check "Run this program in compatibility mode for" → select older OS
+
+2. For 16-bit applications on 64-bit Windows:
+   - 16-bit apps CANNOT run natively on 64-bit Windows
+   - Options: Virtual machine (Hyper-V), Wine, DOSBox, or migrate app
+
+3. For Internet Explorer dependent apps:
+   - Enable IE Mode in Microsoft Edge:
+     - Edge → Settings → Default browser → Internet Explorer compatibility
+     - Add the specific site to "Internet Explorer mode pages" list
+
+4. Windows App Compatibility Toolkit:
+   - Use Microsoft Application Compatibility Toolkit (ACT) for enterprise shims
+   - Create compatibility fixes (shims) to make old apps work
+
+================================================================================
+SECTION 5: SOFTWARE UNINSTALLATION ISSUES
+================================================================================
+
+Symptoms:
+- Cannot uninstall application through Programs and Features
+- Uninstaller crashes or hangs
+- Application still appears after uninstall
+
+Resolution Steps:
+1. Use Programs and Features:
+   appwiz.cpl
+
+2. Force uninstall using WMI:
+   $app = Get-WmiObject -Class Win32_Product | Where-Object {$_.Name -like "*AppName*"}
+   $app.Uninstall()
+
+3. Use Microsoft FixIt / Program Install/Uninstall Troubleshooter:
+   - https://support.microsoft.com/help/17588
+
+4. Manually remove stubborn apps:
+   - Delete from C:\Program Files\<AppName>
+   - Remove registry entries:
+     HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
+     HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
+
+5. Use Revo Uninstaller (third-party) for deep cleaning
+
+Source: Microsoft Learn - Windows Client Application Management Documentation
+Last Updated: 2025-01-15

@@ -1,0 +1,198 @@
+REMOTE DESKTOP & REMOTE ACCESS TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Remote Desktop Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/remote/remote-desktop-services-overview
+Category: Remote Desktop | RDP | Remote Desktop Services | Terminal Server | RDS | Teams | Remote Work
+
+================================================================================
+SECTION 1: REMOTE DESKTOP (RDP) CONNECTION ISSUES
+================================================================================
+
+Symptoms:
+- "Remote Desktop can't connect to the remote computer"
+- RDP shows "Connection refused"
+- RDP connects but immediately disconnects
+- "Your credentials did not work" RDP error
+- "The remote session was disconnected because there are no Remote Desktop License Servers"
+
+Diagnostic Commands:
+  # Check if RDP is enabled on local machine
+  Get-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections"
+  # fDenyTSConnections = 0 means RDP is ENABLED
+
+  # Enable RDP on local machine
+  Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+
+  # Check RDP port (default 3389)
+  Get-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "PortNumber"
+
+  # Test RDP connectivity to remote machine
+  Test-NetConnection -ComputerName <remote_PC> -Port 3389
+
+  # Check RDP service
+  Get-Service -Name TermService | Select-Object Status, StartType
+
+  # Enable RDP via PowerShell (run on remote PC as admin)
+  Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+  Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+
+Common Error Codes:
+  Error 0x204 - No route to host:
+    Fix: Check network connectivity, VPN may be needed
+
+  Error 0x207 - Connection refused:
+    Fix: Enable RDP on target PC, check firewall
+
+  Error 0x112 - Licensing error:
+    Fix: Contact IT — RDS CAL issue on terminal server
+
+  Error 0x907 - Group Policy blocking RDP:
+    Fix: IT admin needs to check GPO
+
+Resolution Steps:
+1. Enable RDP on target PC:
+   # Run on target PC as admin:
+   Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+   Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+   Restart-Service TermService
+
+2. Allow RDP through Windows Firewall:
+   New-NetFirewallRule -DisplayName "Allow RDP" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow
+
+3. Check Network Level Authentication (NLA):
+   - If cannot connect, NLA mismatch could be cause
+   - Target PC: System Properties → Remote → uncheck "Allow connections only from computers running NLA"
+
+4. Check Remote Desktop Users group:
+   - Target PC: Computer Management → Local Users and Groups → Groups → Remote Desktop Users
+   - Add the user who needs to connect
+
+5. Verify license (for RDS/Terminal Server):
+   - Event Viewer → System → look for "Terminal Services" errors
+
+--------------------------------------------------------------------------------
+SECTION 2: RDP PERFORMANCE / LATENCY ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- RDP session is slow or laggy
+- Screen not refreshing properly
+- Mouse movement delayed in RDP
+
+Resolution Steps:
+1. Adjust RDP display settings:
+   - In Remote Desktop Connection → Experience tab
+   - Set connection speed to LAN (10 Mbps or higher)
+   - Uncheck: Desktop backgrounds, Font smoothing, Desktop composition
+   - Check: Persistent bitmap caching
+
+2. Reduce colour depth:
+   - Remote Desktop Connection → Display → Color depth → High Color (16-bit)
+
+3. Disable clipboard and printer redirection if not needed:
+   - Local Resources tab → uncheck Printers, Clipboard if not needed
+
+4. Update network drivers on both client and server
+
+5. Check for bandwidth issues:
+   - Run: speedtest.net on both client and server
+
+--------------------------------------------------------------------------------
+SECTION 3: MICROSOFT TEAMS REMOTE WORK ISSUES
+--------------------------------------------------------------------------------
+Symptoms:
+- Teams calls dropping frequently
+- Cannot join Teams meetings
+- Teams video not working
+- Background noise in Teams calls
+
+Diagnostic Commands:
+  # Check Teams version
+  Get-AppxPackage -Name MicrosoftTeams | Select-Object Version
+
+  # Check Teams processes
+  Get-Process -Name Teams -ErrorAction SilentlyContinue | Select-Object Name, CPU, WorkingSet
+
+  # Run Teams diagnostic
+  # In Teams: Help → Report a Problem → collect diagnostic
+
+Resolution Steps:
+1. Teams call quality issues:
+   - Check network: minimum 1.2 Mbps up/down for video calls
+   - Close other bandwidth-heavy apps during calls
+   - Switch from WiFi to wired connection
+   - Teams → Settings → Calls → Noise suppression → High
+
+2. Camera not working in Teams:
+   - Teams → Settings → Devices → Camera → select correct camera
+   - Check Camera privacy: Settings → Privacy → Camera → allow Teams
+
+3. Microphone not working:
+   - Teams → Settings → Devices → Microphone → select correct device
+   - Check Microphone privacy: Settings → Privacy → Microphone → allow Teams
+   - Test in Sound settings: Right-click speaker → Open Sound Settings → Input → Test microphone
+
+4. Teams not loading / blank screen:
+   # Clear Teams cache:
+   Stop-Process -Name Teams -Force -ErrorAction SilentlyContinue
+   Remove-Item "$env:APPDATA\Microsoft\Teams\Cache\*" -Recurse -Force
+   Remove-Item "$env:APPDATA\Microsoft\Teams\blob_storage\*" -Recurse -Force
+   Remove-Item "$env:APPDATA\Microsoft\Teams\databases\*" -Recurse -Force
+   Remove-Item "$env:APPDATA\Microsoft\Teams\GPUCache\*" -Recurse -Force
+   Remove-Item "$env:APPDATA\Microsoft\Teams\IndexedDB\*" -Recurse -Force
+   Remove-Item "$env:APPDATA\Microsoft\Teams\Local Storage\*" -Recurse -Force
+   Start-Process "$env:LOCALAPPDATA\Microsoft\Teams\current\Teams.exe"
+
+5. Teams sign-in issues:
+   - Clear credentials: Control Panel → Credential Manager → remove Teams/Microsoft entries
+   - Sign out of all Office apps → sign back in with SSO
+
+--------------------------------------------------------------------------------
+SECTION 4: REMOTE ASSISTANCE / QUICK ASSIST
+--------------------------------------------------------------------------------
+Symptoms:
+- Cannot connect using Quick Assist
+- Remote Assistance not working
+- Screen sharing session disconnects
+
+Resolution Steps:
+1. Start Quick Assist:
+   - Search "Quick Assist" in Start menu
+   - Or run: quickassist.exe
+   - Or: ms-quickassist:
+
+2. Check Quick Assist is allowed through firewall:
+   Get-NetFirewallRule | Where-Object {$_.DisplayName -like "*Quick Assist*"}
+
+3. If Quick Assist is blocked by policy:
+   - IT admin must allow: get-appxpackage -name Microsoft.RemoteAssistance
+
+4. Alternative: Windows Remote Assistance
+   - Run: msra.exe /offerra
+   - Or: msra.exe /? for options
+
+================================================================================
+SECTION 5: WAKE-ON-LAN / REMOTE POWER
+================================================================================
+
+Enable Wake-on-LAN:
+1. BIOS/UEFI: Enable "Wake on LAN" option
+2. Device Manager → Network Adapter → Properties → Power Management
+   - Check "Allow this device to wake the computer"
+   - Check "Only allow a magic packet to wake the computer"
+3. Advanced tab: Enable "Wake on Magic Packet"
+
+Send Wake-on-LAN packet:
+  # PowerShell function to wake a PC by MAC address
+  function Send-WakeOnLan {
+      param([string]$MacAddress)
+      $broadcast = [System.Net.IPAddress]::Broadcast
+      $mac = $MacAddress -replace '[:\-]', ''
+      $target = [byte[]](@(0xFF) * 6 + ($mac -split '(.{2})' | Where-Object {$_} | ForEach-Object {[Convert]::ToByte($_, 16)}) * 16)
+      $udpClient = New-Object System.Net.Sockets.UdpClient
+      $udpClient.Connect($broadcast, 9)
+      $udpClient.Send($target, $target.Length)
+      $udpClient.Close()
+  }
+  Send-WakeOnLan -MacAddress "AA:BB:CC:DD:EE:FF"
+
+Source: Microsoft Learn - Windows Client Remote Desktop Services Documentation
+Last Updated: 2025-01-15

@@ -1,0 +1,199 @@
+BITLOCKER & WINDOWS SECURITY TROUBLESHOOTING SOP
+Source: Microsoft Learn - Windows Client Security Documentation
+URL: https://learn.microsoft.com/en-us/troubleshoot/windows-client/windows-security/bitlocker-recovery-known-issues
+Category: Security | BitLocker | Encryption | TPM | Credential Guard
+
+================================================================================
+SECTION 1: BITLOCKER RECOVERY ISSUES
+================================================================================
+
+This SOP describes common issues that may prevent BitLocker from behaving as
+expected when a drive is recovered, or that may cause BitLocker to start
+recovery unexpectedly.
+
+NOTE: In this document:
+- "Recovery password" refers to the 48-digit recovery password
+- "Recovery key" refers to the 32-digit recovery key
+
+--------------------------------------------------------------------------------
+ISSUE 1: WINDOWS PROMPTS FOR NON-EXISTING BITLOCKER RECOVERY PASSWORD
+--------------------------------------------------------------------------------
+Symptom:
+- Windows prompts for a BitLocker recovery password
+- However, a BitLocker recovery password was never configured
+
+Cause:
+- Computer joined domain before BitLocker was fully configured
+- Recovery password backup to AD DS initially failed
+
+Resolution Steps:
+1. Check if BitLocker recovery password exists in AD:
+   Get-ADObject -Filter {objectClass -eq "msFVE-RecoveryInformation"} -Properties msFVE-RecoveryPassword
+
+2. If no password in AD, use Microsoft Account recovery:
+   - Visit https://account.microsoft.com/devices/recoverykey
+
+3. If password was backed up via WMI:
+   - Use manage-bde.exe to query protectors:
+   manage-bde.exe -protectors -get C:
+
+4. For new BitLocker setup, backup recovery key to AD:
+   manage-bde.exe -protectors -adbackup C:
+
+--------------------------------------------------------------------------------
+ISSUE 2: RECOVERY PASSWORD NOT BACKED UP - LAPTOP LOCKED
+--------------------------------------------------------------------------------
+Symptom:
+- Hard disk of Windows 10/11 laptop needs to be recovered
+- Disk encrypted with BitLocker Drive Encryption
+- Recovery password was NOT backed up
+- Usual user is not available
+
+Resolution:
+Method 1 - WMI Script Backup:
+  Create a Windows Management Instrumentation (WMI) script that backs up the
+  information. See: BitLocker Drive Encryption Provider documentation.
+
+Method 2 - manage-bde.exe Command:
+  In elevated Command Prompt, run:
+    manage-bde.exe -protectors -adbackup C:
+
+  This backs up all recovery information for drive C: to AD DS.
+
+IMPORTANT: BitLocker does not automatically manage this backup process.
+After any recovery, immediately backup the new recovery password to AD DS.
+
+--------------------------------------------------------------------------------
+ISSUE 3: BITLOCKER PROMPTS AFTER UEFI / TPM FIRMWARE UPDATES (SURFACE DEVICES)
+--------------------------------------------------------------------------------
+Symptom:
+- Surface device has BitLocker enabled
+- After TPM firmware update or UEFI signature update:
+  - Device prompts for BitLocker recovery password at startup
+  - Correct password entered but Windows doesn't start
+  - Device enters infinite restart loop
+
+Cause:
+- Surface device TPM configured to use non-default PCR values
+- Secure Boot may be turned off
+- PCR values explicitly defined by group policy
+
+Verification Command:
+  manage-bde.exe -protectors -get C:
+
+Step 1 - Disable TPM Protectors on Boot Drive:
+1. Obtain BitLocker recovery password from https://account.microsoft.com/devices/recoverykey
+2. Download Surface recovery image from https://support.microsoft.com/surface-recovery-image
+3. Create USB recovery drive from the downloaded image
+4. Boot from USB recovery drive
+5. Select language and keyboard layout
+6. Select Troubleshoot → Advanced Options → Command Prompt
+7. Run these commands:
+   manage-bde.exe -unlock -recoverypassword <Password> <DriveLetter>:
+   manage-bde.exe -protectors -disable <DriveLetter>:
+8. Restart the computer
+9. Enter the BitLocker recovery password when prompted
+
+Step 2 - Recover Data if Windows Won't Start:
+  manage-bde.exe -unlock -recoverypassword <Password> <DriveLetter>:
+  xcopy.exe <DriveLetter>:\Users\<Username>\* D:\Backup\ /E /H /C /I
+
+Step 3 - Restore Default PCR Values:
+1. Suspend BitLocker:
+   Suspend-BitLocker -MountPoint "C:" -RebootCount 0
+2. Restart device → edit UEFI settings → set Secure Boot to "Microsoft Only"
+3. Sign into Windows
+4. Resume BitLocker:
+   Resume-BitLocker -MountPoint "C:"
+
+Step 4 - Suspend BitLocker During Future TPM/UEFI Updates:
+  # BEFORE installing firmware updates:
+  Suspend-BitLocker -MountPoint "C:" -RebootCount 0
+
+  # AFTER installing firmware updates:
+  Resume-BitLocker -MountPoint "C:"
+
+IMPORTANT: TPM and UEFI firmware updates may require multiple restarts.
+Set RebootCount to 2 or higher, or use 0 (indefinite) and manually resume.
+
+--------------------------------------------------------------------------------
+ISSUE 4: TPM 1.2 + CREDENTIAL GUARD - BITLOCKER RECOVERY LOOP (ERROR 0xC0210000)
+--------------------------------------------------------------------------------
+Symptom:
+- Device uses TPM 1.2 and runs Windows 10 version 1809
+- Device uses Device Guard / Credential Guard (Virtualization-based Security)
+- Every restart enters BitLocker Recovery mode
+- Error message: "Error code 0xC0210000"
+
+Cause:
+- TPM 1.2 does not support Secure Launch
+- Conflict between VBS features and TPM 1.2
+
+Resolution:
+Option 1:
+  Remove the device from GPO groups that enforce Secure Launch
+
+Option 2:
+  Edit "Turn On Virtualization Based Security" GPO:
+  - Set "Secure Launch Configuration" to "Disabled"
+
+--------------------------------------------------------------------------------
+ISSUE 5: BITLOCKER PIN UNLOCK FAILURE AFTER UPDATE ROLLBACK
+--------------------------------------------------------------------------------
+Symptom:
+- After uninstalling cumulative update and rolling back OS build
+- BitLocker fails to unlock with correct PIN
+- Affects Windows 11 version 24H2 devices after KB5063878
+
+Resolution:
+1. Unlock device using 48-digit recovery password
+2. Install KB5062660 or a later cumulative update
+
+--------------------------------------------------------------------------------
+BITLOCKER MANAGEMENT COMMANDS
+--------------------------------------------------------------------------------
+
+Check BitLocker Status:
+  manage-bde.exe -status
+
+Enable BitLocker on C: drive:
+  Enable-BitLocker -MountPoint "C:" -EncryptionMethod XtsAes256 -UsedSpaceOnly -TpmProtector
+
+Add PIN to BitLocker:
+  Add-BitLockerKeyProtector -MountPoint "C:" -Pin (ConvertTo-SecureString "YourPIN" -AsPlainText -Force) -TpmAndPinProtector
+
+Backup recovery password to AD:
+  $RecoveryProtector = (Get-BitLockerVolume -MountPoint "C:").KeyProtector | Where-Object {$_.KeyProtectorType -eq "RecoveryPassword"}
+  Backup-BitLockerKeyProtector -MountPoint "C:" -KeyProtectorId $RecoveryProtector.KeyProtectorId
+
+Decrypt/Disable BitLocker:
+  Disable-BitLocker -MountPoint "C:"
+
+================================================================================
+SECTION 2: WINDOWS DEFENDER / WINDOWS SECURITY
+================================================================================
+
+SUBCATEGORIES:
+- Windows Defender Antivirus
+- Windows Firewall with Advanced Security (WFAS)
+- Windows Defender Exploit Guard
+- Secure Boot issues
+
+Diagnostic Commands:
+  # Check Windows Defender status
+  Get-MpComputerStatus
+
+  # Run quick scan
+  Start-MpScan -ScanType QuickScan
+
+  # Update definitions
+  Update-MpSignature
+
+  # Check protection history
+  Get-MpThreatDetection
+
+  # Check Windows Defender Firewall status
+  Get-NetFirewallProfile | Select-Object Name, Enabled
+
+Source: Microsoft Learn Windows Client Security Documentation
+Last Updated: 2026-02-12
