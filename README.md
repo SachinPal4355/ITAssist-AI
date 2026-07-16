@@ -1,3 +1,14 @@
+---
+title: ITAssist AI
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: "1.28.0"
+app_file: app.py
+pinned: false
+---
+
 # 🤖 ITAssist AI — Service Desk Copilot
 
 > AI-powered IT support workflow built with **Streamlit + LangGraph + FAISS + Groq**
