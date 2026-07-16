@@ -197,15 +197,14 @@ def _log(msg: str):
 def render_user_portal(username: str):
     _init_session()
 
-    render_page_header(
-        "🤖 ITAssist AI — Service Desk Copilot",
-        f"Welcome, {username} · Powered by Groq LLaMA-3 + RAG (Microsoft Windows Docs)",
-    )
-
     # ── 2-Column Layout ───────────────────────────────────────────────────────
     col_left, col_right = st.columns([7.2, 2.8])
 
     with col_left:
+        render_page_header(
+            "🤖 ITAssist AI — Service Desk Copilot",
+            f"Welcome, {username} · Powered by Groq LLaMA-3 + RAG (Microsoft Windows Docs)",
+        )
         # ── RAG Index Warning ─────────────────────────────────────────────────
         if not is_index_ready():
             st.warning(
@@ -242,6 +241,91 @@ def render_user_portal(username: str):
 
             st.markdown("---")
 
+        # ── Persistent File Uploader ──────────────────────────────────────────
+        st.markdown('<div style="color:#ececec; font-size:13px; font-weight:600; margin-top:8px; margin-bottom:4px;">📎 Attach files or screenshots (all stages):</div>', unsafe_allow_html=True)
+        uploaded_files = st.file_uploader(
+            "Attach files (screenshots, logs, PDFs, DOCX)",
+            type=["png", "jpg", "jpeg", "webp", "pdf", "docx", "txt", "log"],
+            accept_multiple_files=True,
+            key="file_uploader",
+            label_visibility="collapsed",
+            help="Files are read in memory only and never stored on disk.",
+        )
+
+        if "extracted_files_cache" not in st.session_state:
+            st.session_state.extracted_files_cache = {}
+
+        if uploaded_files:
+            new_files_detected = False
+            for f in uploaded_files:
+                file_key = f"{f.name}_{f.size}"
+                if file_key not in st.session_state.extracted_files_cache:
+                    new_files_detected = True
+                    break
+
+            if new_files_detected:
+                with st.spinner("🔍 Scanning attached files first for safety and context validation..."):
+                    from utils.file_reader import extract_text_from_file, strip_pii_patterns
+                    for f in uploaded_files:
+                        file_key = f"{f.name}_{f.size}"
+                        if file_key not in st.session_state.extracted_files_cache:
+                            raw_text, method = extract_text_from_file(f)
+                            confidence = 100
+                            description = raw_text
+                            if method == "image":
+                                if "CONFIDENCE:" in raw_text:
+                                    try:
+                                        conf_line = [l for l in raw_text.split("\n") if "CONFIDENCE:" in l][0]
+                                        confidence = int(conf_line.split(":")[-1].replace("%", "").strip())
+                                    except Exception:
+                                        confidence = 90
+                                    try:
+                                        desc_lines = [l for l in raw_text.split("\n") if "DESCRIPTION:" in l]
+                                        if desc_lines:
+                                            description = raw_text.split("DESCRIPTION:", 1)[-1].strip()
+                                    except Exception:
+                                        pass
+                            
+                            clean_text = strip_pii_patterns(description)
+                            st.session_state.extracted_files_cache[file_key] = {
+                                "text": clean_text,
+                                "method": method,
+                                "confidence": confidence,
+                                "raw_response": raw_text
+                            }
+
+            # Render cached explanations / descriptions under uploader
+            for f in uploaded_files:
+                file_key = f"{f.name}_{f.size}"
+                cached = st.session_state.extracted_files_cache.get(file_key)
+                if cached:
+                    if cached["method"] == "image":
+                        conf = cached["confidence"]
+                        st.markdown(
+                            f"""
+                            <div style="background:#1e1e1e; border:1px solid #3e3e3e; border-radius:8px; padding:12px; margin-top:8px; margin-bottom:8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span style="color:#ececec; font-size:12px; font-weight:600;">👁️ Vision AI Image Description ({f.name}):</span>
+                                    <span style="color:{'#10a37f' if conf >= 50 else '#ef4444'}; font-size:11px; font-weight:700;">Confidence: {conf}%</span>
+                                </div>
+                                <div style="color:#b4b4b4; font-size:12px; margin-top:4px; line-height:1.4;">{cached['text']}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                        if conf < 50:
+                            st.error(f"⚠️ Screenshot matched with low confidence ({conf}%). Please attach a clearer screenshot/image of your issue.")
+                    else:
+                        st.markdown(
+                            f"""
+                            <div style="background:#1e1e1e; border:1px solid #3e3e3e; border-radius:8px; padding:8px 12px; margin-top:4px; margin-bottom:4px; font-size:12px; color:#b4b4b4;">
+                                📄 Extracted text from {f.name} ({len(cached['text'])} chars).
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+
+        st.markdown("---")
         stage = st.session_state.portal_stage
 
         # ══════════════════════════════════════════════════════════════════════
@@ -318,11 +402,118 @@ def render_user_portal(username: str):
         attached = st.session_state.get("attached_files_context", "")
         if attached:
             st.markdown(
-                "<div style='margin-top:10px; background:#2f2f2f; border:1px solid #3f3f3f; border-radius:8px; padding:10px;'>"
-                "<span style='color:#ececec; font-size:12px; font-weight:600;'>📎 Attachment processed</span>"
+                "<div style='margin-top:10px; background:#2f2f2f; border:1px solid #3f3f3f; border-radius:8px; padding:10px;'>\n"
+                "<span style='color:#ececec; font-size:12px; font-weight:600;'>📎 Attachment processed</span>\n"
                 "<br><span style='color:#b4b4b4; font-size:11px;'>Content injected into AI context</span></div>",
                 unsafe_allow_html=True,
             )
+
+        # ── IT Asset Request Form ──
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:16px; margin-bottom:12px;">
+                <div style="color:#ececec; font-weight:700; font-size:14px; font-family:monospace; margin-bottom:4px; border-bottom:1px solid #2f2f2f; padding-bottom:6px;">
+                    📦 Request IT Asset
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        with st.container():
+            asset_name = st.selectbox(
+                "Select Asset:",
+                ["Dell XPS 15", "MacBook Pro", "UltraWide 34 Monitor", "Logitech Headset", "Microsoft Office Suite License"],
+                key="asset_select_box"
+            )
+            
+            manager_name = st.text_input(
+                "Reporting Manager Name:",
+                value=st.session_state.get("user_manager_name", "Amit Verma"),
+                key="asset_manager_name"
+            )
+            
+            justification = st.text_area(
+                "Justification / Business Need:",
+                placeholder="Describe why you need this asset...",
+                height=80,
+                key="asset_justification"
+            )
+            
+            if st.button("Submit Asset Request", type="primary", use_container_width=True, key="submit_asset_req"):
+                if not justification.strip():
+                    st.error("Please provide a justification.")
+                elif not manager_name.strip():
+                    st.error("Please enter manager name.")
+                else:
+                    # ── Same for Asset Request: Must pass through guardrail ──
+                    _log("🛡️ Guardrail scanning asset request...")
+                    from utils.guardrail import guardrail_check
+                    guard = guardrail_check(
+                        user_issue=f"Asset Request: {asset_name}. Justification: {justification.strip()}",
+                        attached_doc_context=f"Reporting Manager: {manager_name.strip()}"
+                    )
+                    
+                    if not guard.safe:
+                        _log(f"🚫 Guardrail BLOCKED asset request: {guard.reason[:60]}")
+                        st.error(f"🛡️ **Guardrail blocked request**\n\n**Reason:** {guard.reason}")
+                    else:
+                        _log("✅ Guardrail: Content cleared")
+                        ASSET_INVENTORY = {
+                            "Dell XPS 15": "In Stock",
+                            "MacBook Pro": "Out of Stock",
+                            "UltraWide 34 Monitor": "In Stock",
+                            "Logitech Headset": "In Stock",
+                            "Microsoft Office Suite License": "In Stock"
+                        }
+                        stock_status = ASSET_INVENTORY.get(asset_name, "In Stock")
+                        _log(f"📦 Check inventory: {asset_name} ({stock_status})")
+                        
+                        _log("🎫 Creating asset request ticket...")
+                        from database.crud import get_session
+                        from database.models import get_or_create_user, Ticket
+                        user = get_or_create_user(username, "user")
+                        
+                        import random
+                        t_num = random.randint(100, 999)
+                        ticket_id_str = f"SD-{t_num}"
+                        
+                        st.session_state.user_manager_name = manager_name.strip()
+                        
+                        with get_session() as session:
+                            ticket_obj = Ticket(
+                                ticket_id=ticket_id_str,
+                                user_id=user.id,
+                                category="Asset Request",
+                                issue_summary=f"Request {asset_name} (Manager: {manager_name.strip()})",
+                                ai_analysis=f"Justification: {justification.strip()}",
+                                probable_cause=f"Inventory status: {stock_status}",
+                                severity="Medium",
+                                confidence=1.0,
+                                status="Pending Manager Approval",
+                                questions_asked=0,
+                                resolution_notes="No email drafted"
+                            )
+                            session.add(ticket_obj)
+                        
+                        _log(f"✅ Ticket {ticket_id_str} created (Pending Manager Approval)")
+                        st.success(f"🎉 Asset request submitted! Ticket **{ticket_id_str}** created under status: **Pending Manager Approval**.")
+                        st.session_state.portal_stage = "idle"
+                        
+                        # Add to chat history
+                        _add_chat("user", f"I submitted an asset request for {asset_name}.")
+                        _add_chat(
+                            "assistant",
+                            f"✅ **Asset Request Registered Successfully!**\n\n"
+                            f"- **Asset**: {asset_name}\n"
+                            f"- **Manager**: {manager_name.strip()}\n"
+                            f"- **Inventory Status**: {stock_status}\n"
+                            f"- **Ticket ID**: {ticket_id_str}\n\n"
+                            f"This request has been routed to your manager for approval. You can track this in the IT Portal.",
+                            agent_step="📦 Asset Request"
+                        )
+                        st.rerun()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -367,24 +558,6 @@ def _render_idle_stage(username: str):
         key="user_issue_input",
     )
 
-    # ── File Uploader ─────────────────────────────────────────────────────────
-    uploaded_files = st.file_uploader(
-        "📎 Attach files (screenshots, logs, PDFs, DOCX)",
-        type=["png", "jpg", "jpeg", "webp", "pdf", "docx", "txt", "log"],
-        accept_multiple_files=True,
-        key="file_uploader",
-        help="Files are read in memory only and never stored on disk.",
-    )
-
-    if uploaded_files:
-        names = ", ".join(f.name for f in uploaded_files)
-        st.markdown(
-            f"<div style='background:#162032; border:1px solid #0ea5e9; border-radius:8px; "
-            f"padding:8px 12px; font-size:12px; color:#38bdf8; margin-top:6px;'>"
-            f"📎 {len(uploaded_files)} file(s) attached: {names}</div>",
-            unsafe_allow_html=True,
-        )
-
     # ── Submit / Reset ────────────────────────────────────────────────────────
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -399,29 +572,41 @@ def _render_idle_stage(username: str):
             st.error("Please describe your issue before submitting.")
             return
 
-        # ── Step 1: Extract text from attached files ──────────────────────────
+        # ── Intercept Greetings ───────────────────────────────────────────────
+        import re
+        greeting_patterns = r"^\s*(hi|hello|hey|greetings|good\s+morning|good\s+afternoon|good\s+evening|yo|sup)\s*[.!?]*\s*$"
+        if re.match(greeting_patterns, user_input.strip().lower()):
+            _add_chat("user", user_input.strip())
+            _add_chat(
+                "assistant",
+                "👋 **Hello! Welcome to the IT Support Portal.**\n\n"
+                "I am your IT Service Desk Copilot. I can assist you with your software, network, hardware, "
+                "or access issues. Please describe your IT issue or select a common issue to get started!",
+                agent_step="👋 Greeting Response"
+            )
+            st.session_state.user_issue_input = ""
+            st.rerun()
+            return
+
+        # ── Step 1: Extract text from attached files using cache ──────────────
         attached_context = ""
+        uploaded_files = st.session_state.get("file_uploader", [])
         if uploaded_files:
-            _log(f"📎 Reading {len(uploaded_files)} attached file(s)...")
-            from utils.file_reader import extract_text_from_file, semantic_search_in_doc, strip_pii_patterns
+            _log(f"📎 Reading {len(uploaded_files)} attached file(s) from cache...")
+            from utils.file_reader import semantic_search_in_doc
             parts = []
             full_parts = []
             for f in uploaded_files:
-                raw_text, method = extract_text_from_file(f)
-                if method == "image":
-                    _log(f"🖼️ Vision AI processed: {f.name}")
-                else:
-                    _log(f"📄 Extracted text from: {f.name}")
-                # Strip obvious PII before validation
-                clean_text = strip_pii_patterns(raw_text)
-                # Save full file content for complete guardrail validation
-                full_parts.append(f"[{f.name} - Full Content]:\n{clean_text}")
-                # Semantic search: find the most relevant chunks for user query processing
-                relevant = semantic_search_in_doc(user_input.strip(), clean_text, top_k=3)
-                if relevant:
-                    parts.append(f"[{f.name}]:\n{relevant}")
-            attached_context = "\n\n".join(parts)
-            st.session_state.attached_files_context = attached_context
+                file_key = f"{f.name}_{f.size}"
+                cached = st.session_state.get("extracted_files_cache", {}).get(file_key)
+                if cached:
+                    clean_text = cached["text"]
+                    full_parts.append(f"[{f.name} - Full Content]:\n{clean_text}")
+                    relevant = semantic_search_in_doc(user_input.strip(), clean_text, top_k=3)
+                    if relevant:
+                        parts.append(f"[{f.name}]:\n{relevant}")
+            
+            st.session_state.attached_files_context = "\n\n".join(parts)
             st.session_state.full_uploaded_text = "\n\n".join(full_parts)
             _log("✅ File context ready")
 
@@ -870,7 +1055,7 @@ def _render_ticket_preview_stage(username: str):
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Action buttons
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
         if st.button("✅ Approve & Submit Ticket", type="primary", use_container_width=True, key="approve_ticket"):
             _submit_ticket(username, agent_state, edited_summary)
@@ -888,6 +1073,11 @@ def _render_ticket_preview_stage(username: str):
                 agent_step="Cancelled",
             )
             st.session_state.portal_stage = "done"
+            st.rerun()
+
+    with col_d:
+        if st.button("🔄 Reset", use_container_width=True, key="reset_preview_btn"):
+            _reset_portal()
             st.rerun()
 
 

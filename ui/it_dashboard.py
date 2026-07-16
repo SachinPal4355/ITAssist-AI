@@ -195,7 +195,7 @@ def render_it_dashboard(username: str):
         f"Logged in as: {username} · All tickets with AI analysis",
     )
 
-    tabs = st.tabs(["📊 Overview", "🎫 All Tickets", "📚 Knowledge Base"])
+    tabs = st.tabs(["📊 Overview", "🎫 All Tickets", "📚 Knowledge Base", "👥 Org Directory"])
 
     with tabs[0]:
         _render_overview()
@@ -205,6 +205,9 @@ def render_it_dashboard(username: str):
 
     with tabs[2]:
         _render_knowledge_base()
+
+    with tabs[3]:
+        _render_org_directory()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -628,3 +631,82 @@ def _render_knowledge_base():
         """,
         unsafe_allow_html=True,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tab 4: Org Directory Hierarchy Tree
+# ─────────────────────────────────────────────────────────────────────────────
+
+ORGANIZATION_HIERARCHY = {
+    "Sachin Pal (CEO)": {
+        "Rajesh Sharma (VP of Engineering)": {
+            "Amit Verma (IT Director)": {
+                "Sachin (IT Lead / Manager)": [
+                    "Priya Singh (Tier-1 Support)",
+                    "Rahul Mehta (System Admin)"
+                ],
+                "Vikram Patel (Dev Lead)": [
+                    "Neha Gupta (Senior Developer)",
+                    "Karan Johar (Frontend Developer)"
+                ]
+            }
+        },
+        "Pooja Rao (VP of Operations)": {
+            "Divya Joshi (HR Manager)": [
+                "Anjali Sen (HR Specialist)",
+                "Rohan Das (HR Recruiter)"
+            ]
+        }
+    }
+}
+
+def _render_org_tree(hierarchy: dict, level: int = 0):
+    for manager, reports in hierarchy.items():
+        indent = level * 24
+        icon = "👑" if level == 0 else "💼" if level == 1 else "👔" if level == 2 else "👔" if level == 3 else "👥"
+        st.markdown(
+            f"""
+            <div style="margin-left:{indent}px; background:#1e293b; border-left: 4px solid #4f46e5;
+                 border-top:1px solid #334155; border-right:1px solid #334155; border-bottom:1px solid #334155;
+                 border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; align-items:center;">
+                <span style="font-size:18px; margin-right:8px;">{icon}</span>
+                <span style="color:#e2e8f0; font-size:14px; font-weight:600;">{manager}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if isinstance(reports, dict):
+            _render_org_tree(reports, level + 1)
+        elif isinstance(reports, list):
+            for emp in reports:
+                emp_indent = (level + 1) * 24
+                st.markdown(
+                    f"""
+                    <div style="margin-left:{emp_indent}px; background:#0f172a; border-left: 4px solid #64748b;
+                         border-top:1px solid #1e293b; border-right:1px solid #1e293b; border-bottom:1px solid #1e293b;
+                         border-radius:8px; padding:8px 12px; margin-bottom:6px; display:flex; align-items:center;">
+                        <span style="font-size:16px; margin-right:8px;">👤</span>
+                        <span style="color:#94a3b8; font-size:13px; font-weight:500;">{emp}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+def _render_org_directory():
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:20px; margin-bottom:16px;">
+            <div style="font-size:18px; font-weight:700; color:#ececec; margin-bottom:8px;">
+                👥 Organization Directory & Manager Hierarchy Tree
+            </div>
+            <div style="color:#b4b4b4; font-size:13px;">
+                Visual mapping of corporate hierarchy and reporting relationships used for automated asset approvals.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    with st.container():
+        _render_org_tree(ORGANIZATION_HIERARCHY)

@@ -92,6 +92,7 @@ def _read_image_via_groq(file_bytes: bytes, filename: str) -> str:
     """
     Send image to Groq vision model to extract a textual description.
     Uses llama-4-scout (vision-capable) with base64 encoding.
+    Returns: "CONFIDENCE: <x>%\nDESCRIPTION: <desc>"
     """
     try:
         client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -116,10 +117,13 @@ def _read_image_via_groq(file_bytes: bytes, filename: str) -> str:
                         {
                             "type": "text",
                             "text": (
-                                "You are an IT support assistant. Analyze this screenshot or image. "
-                                "Extract and describe: any error codes, error messages, system dialogs, "
-                                "warning text, application names, and any relevant technical details. "
-                                "Be specific and thorough. If you see credentials/passwords, DO NOT include them."
+                                "You are an IT support assistant. Analyze this screenshot or image.\n"
+                                "1. Evaluate the readability and relevance of this image for IT troubleshooting, and provide a Confidence Score (0-100%). "
+                                "If the image is blurry, empty, unreadable, or completely unrelated to IT support (e.g., photo of food, pets, scenery), the confidence must be below 50%.\n"
+                                "2. Extract and describe in detail: any error codes, warning messages, dialog text, application names, and technical details. Do not include passwords or personal credentials.\n"
+                                "Format your response EXACTLY as:\n"
+                                "CONFIDENCE: <number>%\n"
+                                "DESCRIPTION: <description>"
                             ),
                         },
                     ],
@@ -127,9 +131,13 @@ def _read_image_via_groq(file_bytes: bytes, filename: str) -> str:
             ],
             max_tokens=800,
         )
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content.strip()
+        # Fallback formatting if model misses the exact syntax
+        if "CONFIDENCE:" not in content:
+            content = f"CONFIDENCE: 90%\nDESCRIPTION: {content}"
+        return content
     except Exception as e:
-        return f"[Image vision error: {e}]"
+        return f"CONFIDENCE: 0%\nDESCRIPTION: [Image vision error: {e}]"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
