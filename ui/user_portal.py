@@ -430,7 +430,8 @@ def render_user_portal(username: str):
             
             manager_name = st.text_input(
                 "Reporting Manager Name:",
-                value=st.session_state.get("user_manager_name", "Amit Verma"),
+                value=st.session_state.get("user_manager_name", ""),
+                placeholder="Type Manager name...",
                 key="asset_manager_name"
             )
             
@@ -447,6 +448,13 @@ def render_user_portal(username: str):
                 elif not manager_name.strip():
                     st.error("Please enter manager name.")
                 else:
+                    # ── Check justification and selected asset similarity ──
+                    from utils.guardrail import check_asset_match
+                    is_matched, match_reason = check_asset_match(asset_name, justification.strip())
+                    if not is_matched:
+                        st.error(f"⚠️ **Asset Request Mismatch**\n\nYour justification refers to a different item than the selected asset **{asset_name}**.\n\n**Details:** {match_reason}\n\nPlease select the correct asset or adjust your justification.")
+                        return
+
                     # ── Same for Asset Request: Must pass through guardrail ──
                     _log("🛡️ Guardrail scanning asset request...")
                     from utils.guardrail import guardrail_check
@@ -471,8 +479,8 @@ def render_user_portal(username: str):
                         _log(f"📦 Check inventory: {asset_name} ({stock_status})")
                         
                         _log("🎫 Creating asset request ticket...")
-                        from database.crud import get_session
-                        from database.models import get_or_create_user, Ticket
+                        from database.crud import get_session, get_or_create_user
+                        from database.models import Ticket
                         user = get_or_create_user(username, "user")
                         
                         import random

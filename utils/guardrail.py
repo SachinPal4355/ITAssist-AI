@@ -207,3 +207,64 @@ def build_enriched_context(
         parts.append("3. Attached Document Context:\nNo files attached by user.")
 
     return "\n\n---\n\n".join(parts)
+
+
+def check_asset_match(selected_asset: str, justification: str) -> tuple[bool, str]:
+    """
+    Locally verify if the justification text aligns semantically with the selected asset.
+
+    Uses the same HuggingFace SentenceTransformer model (all-MiniLM-L6-v2) already
+    loaded for RAG — NO API call, NO network dependency, works offline & on HuggingFace.
+
+    How it works:
+      1. Embed the selected asset name (e.g. "Dell XPS 15 Laptop").
+      2. Embed the user's justification text.
+      3. Compute cosine similarity between the two vectors.
+      4. If similarity >= 0.25 → match (proceed). Below → mismatch (block).
+
+    Returns:
+        (True, "")              → match, safe to proceed
+        (False, reason_str)     → mismatch, show error to user
+    """
+    try:
+        import numpy as np
+        from rag.retriever import _get_embeddings
+
+        # Asset → descriptive phrase to help the model understand the category
+        ASSET_DESCRIPTIONS = {
+            "Dell XPS 15":                   "Dell XPS 15 laptop computer notebook",
+            "MacBook Pro":                   "MacBook Pro Apple laptop computer notebook",
+            "UltraWide 34 Monitor":          "UltraWide 34 inch display screen monitor",
+            "Logitech Headset":              "Logitech headset headphone audio device",
+            "Microsoft Office Suite License":"Microsoft Office software license productivity suite",
+        }
+
+        asset_phrase = ASSET_DESCRIPTIONS.get(selected_asset, selected_asset)
+
+        embedder = _get_embeddings()
+        vecs = embedder.embed_documents([asset_phrase, justification.strip()])
+
+        a = np.array(vecs[0])
+        b = np.array(vecs[1])
+
+        # Cosine similarity (embeddings are already L2-normalized → just dot product)
+        similarity = float(np.dot(a, b))
+
+        THRESHOLD = 0.25   # tuned for MiniLM-L6-v2 sentence pairs
+
+        print(f"[Asset Match] '{selected_asset}' vs justification — cosine similarity: {similarity:.3f}")
+
+        if similarity >= THRESHOLD:
+            return True, ""
+        else:
+            return (
+                False,
+                f"Your justification (similarity score: {similarity:.0%}) does not appear to describe "
+                f"'{selected_asset}'. Please either select the correct asset from the dropdown or "
+                f"rewrite your justification to match the selected item."
+            )
+
+    except Exception as e:
+        # Fail open on any import/model error so we never hard-block submissions
+        print(f"[Asset Match] local check failed: {e} — defaulting to PASS")
+        return True, ""
