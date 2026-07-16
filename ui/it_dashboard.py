@@ -638,12 +638,12 @@ def _render_knowledge_base():
 # ─────────────────────────────────────────────────────────────────────────────
 
 ORGANIZATION_HIERARCHY = {
-    "Sachin Pal (CEO)": {
-        "Rajesh Sharma (VP of Engineering)": {
-            "Amit Verma (IT Director)": {
-                "Sachin (IT Lead / Manager)": [
-                    "Priya Singh (Tier-1 Support)",
-                    "Rahul Mehta (System Admin)"
+    "Alexander Wright (CEO)": {
+        "Sarah Jenkins (VP of Engineering)": {
+            "David Vance (IT Director)": {
+                "Marcus Brody (IT Lead / Manager)": [
+                    "Elena Rostova (Tier-1 Support)",
+                    "Thomas Miller (System Admin)"
                 ],
                 "Vikram Patel (Dev Lead)": [
                     "Neha Gupta (Senior Developer)",
@@ -651,8 +651,8 @@ ORGANIZATION_HIERARCHY = {
                 ]
             }
         },
-        "Pooja Rao (VP of Operations)": {
-            "Divya Joshi (HR Manager)": [
+        "Patricia Rose (VP of Operations)": {
+            "Diana Prince (HR Manager)": [
                 "Anjali Sen (HR Specialist)",
                 "Rohan Das (HR Recruiter)"
             ]
@@ -660,33 +660,40 @@ ORGANIZATION_HIERARCHY = {
     }
 }
 
-def _render_org_tree(hierarchy: dict, level: int = 0):
-    for manager, reports in hierarchy.items():
-        indent = level * 24
-        icon = "👑" if level == 0 else "💼" if level == 1 else "👔" if level == 2 else "👔" if level == 3 else "👥"
+def _render_org_tree(hierarchy: dict, level: int = 0, prefix: str = ""):
+    items = list(hierarchy.items())
+    for idx, (manager, reports) in enumerate(items):
+        is_last_item = (idx == len(items) - 1)
+        branch = ""
+        if level > 0:
+            branch = "└── " if is_last_item else "├── "
+        
+        icon = "👑" if level == 0 else "💼" if level == 1 else "👔"
+        
         st.markdown(
             f"""
-            <div style="margin-left:{indent}px; background:#1e293b; border-left: 4px solid #4f46e5;
-                 border-top:1px solid #334155; border-right:1px solid #334155; border-bottom:1px solid #334155;
-                 border-radius:8px; padding:10px 14px; margin-bottom:8px; display:flex; align-items:center;">
-                <span style="font-size:18px; margin-right:8px;">{icon}</span>
-                <span style="color:#e2e8f0; font-size:14px; font-weight:600;">{manager}</span>
+            <div style="font-family:monospace; color:#ececec; font-size:13.5px; display:flex; align-items:center; margin-bottom:6px; line-height:1;">
+                <span style="color:#64748b; margin-right:4px; font-weight:700; white-space:pre;">{prefix}{branch}</span>
+                <span style="margin-right:6px;">{icon}</span>
+                <span style="background:#1e293b; border:1px solid #334155; border-radius:6px; padding:4px 8px; font-weight:600;">{manager}</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
+        
+        next_prefix = prefix + ("    " if is_last_item else "│   ") if level > 0 else (prefix + "    " if is_last_item else prefix + "│   ")
         if isinstance(reports, dict):
-            _render_org_tree(reports, level + 1)
+            _render_org_tree(reports, level + 1, next_prefix)
         elif isinstance(reports, list):
-            for emp in reports:
-                emp_indent = (level + 1) * 24
+            for e_idx, emp in enumerate(reports):
+                is_last_emp = (e_idx == len(reports) - 1)
+                emp_branch = "└── " if is_last_emp else "├── "
                 st.markdown(
                     f"""
-                    <div style="margin-left:{emp_indent}px; background:#0f172a; border-left: 4px solid #64748b;
-                         border-top:1px solid #1e293b; border-right:1px solid #1e293b; border-bottom:1px solid #1e293b;
-                         border-radius:8px; padding:8px 12px; margin-bottom:6px; display:flex; align-items:center;">
-                        <span style="font-size:16px; margin-right:8px;">👤</span>
-                        <span style="color:#94a3b8; font-size:13px; font-weight:500;">{emp}</span>
+                    <div style="font-family:monospace; color:#94a3b8; font-size:13px; display:flex; align-items:center; margin-bottom:4px; line-height:1;">
+                        <span style="color:#64748b; margin-right:4px; font-weight:700; white-space:pre;">{next_prefix}{emp_branch}</span>
+                        <span style="margin-right:6px;">👤</span>
+                        <span style="background:#0f172a; border:1px solid #1e293b; border-radius:6px; padding:3px 6px;">{emp}</span>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -701,7 +708,7 @@ def _render_org_directory():
                 👥 Organization Directory & Manager Hierarchy Tree
             </div>
             <div style="color:#b4b4b4; font-size:13px;">
-                Visual mapping of corporate hierarchy and reporting relationships used for automated asset approvals.
+                Visual mapping of corporate hierarchy and reporting relationships in a structural tree format.
             </div>
         </div>
         """,
