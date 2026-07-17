@@ -4,7 +4,7 @@ Streamlit + LangGraph + FAISS + SQLite + Groq
 
 Run with:  streamlit run app.py
 """
-# ITAssist AI Main Entrypoint - Hot reload triggered (Cached resolution update)
+# ITAssist AI Main Entrypoint - Updated UI layout with 3-column structure
 import streamlit as st
 import os
 import sys
@@ -34,7 +34,12 @@ st.markdown(
 
     /* ── Base ── */
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; font-size: 14px; }
-    .stApp { background: #212121; color: #ececec; }
+    .stApp { 
+        background: #212121; 
+        color: #ececec;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
 
     /* ── Remove default Streamlit chrome ── */
     #MainMenu, footer, header { visibility: hidden; }
@@ -42,14 +47,47 @@ st.markdown(
     button[title="Collapse sidebar"], [data-testid="stSidebarCollapseButton"] {
         display: none !important;
     }
-    /* ── Layout ── */
-    .block-container {
-        padding-top: 0.5rem !important;
-        padding-bottom: 0 !important;
-        max-width: 1400px !important;
+    
+    /* ── Maximize Width - 5px padding on all sides ── */
+    .main .block-container {
+        padding: 5px !important;
+        max-width: 100% !important;
+        width: 100% !important;
     }
+    
+    /* Target all possible container elements - remove padding */
+    section[data-testid="stMain"],
+    section.main,
+    .stApp > section,
+    div[data-testid="stAppViewContainer"],
+    .appview-container {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    
+    /* Remove horizontal padding from main content divs */
+    .st-emotion-cache-liupih,
+    [data-testid="stMain"] > div,
+    .main > div,
+    section.main > div,
+    .stApp > header + section > div {
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    
+    /* Force horizontal blocks to use full width */
     div[data-testid="stHorizontalBlock"] {
         align-items: flex-start !important;
+        gap: 0.5rem !important;
+        width: 100% !important;
+    }
+    
+    div[data-testid="column"] {
+        padding: 0 0.25rem !important;
     }
 
     /* ── Sticky bottom input bar ── */
@@ -204,7 +242,6 @@ with _nav_col_main:
             <span style="font-size:18px; font-weight:700; color:#ececec;">ITAssist AI</span>
             <span style="font-size:13px; color:#b4b4b4; margin-left:12px; margin-top:2px;">Service Desk Copilot</span>
             <span style="flex:1;"></span>
-            <span style="font-size:13px; color:#b4b4b4; margin-right:10px;">Signed in as <b>Sachin</b></span>
         </div>
         """,
         unsafe_allow_html=True,

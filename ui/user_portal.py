@@ -30,6 +30,25 @@ from database.crud import create_ticket, get_or_create_user, log_message
 from rag.retriever import is_index_ready
 
 
+@st.dialog("Architecture & Agent Information")
+def _show_arch_dialog():
+    st.markdown("""
+    ### Architecture
+    - **Streamlit Frontend**: User Portal (Chat) & IT Engineer Dashboard
+    - **LangGraph**: State Machine Orchestration
+    - **Intake Agent (Groq LLM)**: Classifies user issues
+    - **Knowledge Agent (FAISS RAG)**: Searches Microsoft SOP docs
+    - **Troubleshoot Agent (Groq LLM)**: Asks diagnostic questions & analyzes root cause
+    - **Resolution Agent**: Suggests self-resolution & creates enriched tickets
+    - **Database**: SQLite (Tickets, Convos)
+    
+    ### Agent Details
+    - **Intake Agent**: User message -> Category + confidence score
+    - **Knowledge Agent**: Category + message -> Relevant SOP excerpts (FAISS RAG)
+    - **Troubleshoot Agent**: Category + SOP context -> Diagnostic questions -> Root cause analysis
+    - **Resolution Agent**: Ticket + root cause -> Resolution steps + PowerShell script
+    """)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Session State Helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -157,7 +176,7 @@ def _log(msg: str):
         log_html = _render_console_logs_html(st.session_state.console_logs)
         console_html = f"""
         <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:14px; height:180px; overflow-y:auto;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #2f2f2f; padding-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #2f2f2f; padding-bottom:0px;">
                 <span style="color:#ececec; font-weight:700; font-size:14px; font-family:monospace;"> AI Console</span>
                 {badge}
             </div>
@@ -292,87 +311,53 @@ def _extract_and_cache_files(uploaded_files):
 def render_user_portal(username: str):
     _init_session()
 
-    col_left, col_right = st.columns([7, 3])
+    # Create 3 individually scrollable containers
+    col_left, col_middle, col_right = st.columns([4, 3, 3])
 
-    # ── RIGHT COLUMN — AI Console + Asset Request ─────────────────────────────
+    # ── RIGHT COLUMN — Asset Request ─────────────────────────────────────────
     with col_right:
-        stage = st.session_state.portal_stage
-        is_live = stage in ["classifying", "generating_resolution"]
-        badge = "<span style='background:#10b981;color:white;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;'> LIVE</span>" if is_live else "<span style='background:#3f3f3f;color:#b4b4b4;font-size:10px;padding:2px 7px;border-radius:10px;'> IDLE</span>"
+        asset_container = st.container(height=500, border=True)
+        with asset_container:
 
-        console_placeholder = st.empty()
-        logs = st.session_state.get("console_logs", [])
-        log_html = _render_console_logs_html(logs)
-        console_html = f"""
-        <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:14px; height:180px; overflow-y:auto;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #2f2f2f; padding-bottom:8px;">
-                <span style="color:#ececec; font-weight:700; font-size:14px; font-family:monospace;"> AI Console</span>
-                {badge}
-            </div>
-            <div style="line-height:1.5;">
-                {log_html}
-            </div>
-        </div>
-        """
-        console_placeholder.markdown(console_html, unsafe_allow_html=True)
-        st.session_state.console_placeholder = console_placeholder
-        st.session_state.console_badge = badge
 
-        # ── IT Asset Request Form ─────────────────────────────────────────────
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:14px 16px 8px 16px; margin-bottom:8px;">
-                <div style="color:#ececec; font-weight:700; font-size:13px; font-family:monospace; border-bottom:1px solid #2f2f2f; padding-bottom:6px; margin-bottom:12px;">
+            # ── IT Asset Request Form ─────────────────────────────────────────────
+            st.markdown(
+                """
+                <div style="color:#ececec; font-weight:700; font-size:15px; margin-bottom:16px;">
                      Request IT Asset
                 </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
 
-        asset_name = st.text_input(
-            "Asset Name:",
-            value=st.session_state.get("asset_name_input", ""),
-            placeholder="e.g. Dell XPS 15, MacBook Pro, Headset...",
-            key="asset_name_input",
-            label_visibility="collapsed"
-        )
-        manager_name = st.text_input(
-            "Manager:",
-            value=st.session_state.get("user_manager_name", ""),
-            placeholder="Type Manager name...",
-            key="asset_manager_name",
-            label_visibility="collapsed"
-        )
-        justification = st.text_area(
-            "Justification:",
-            placeholder="Describe why you need this asset...",
-            height=68,
-            key="asset_justification",
-            label_visibility="collapsed"
-        )
+            st.markdown("<p style='color:#b4b4b4; font-size:12px; margin-bottom:8px;'>Manager (for approval):</p>", unsafe_allow_html=True)
+            manager_name = st.text_input(
+                "Manager:",
+                value=st.session_state.get("user_manager_name", ""),
+                placeholder="Enter manager name...",
+                key="asset_manager_name",
+                label_visibility="collapsed"
+            )
+            
+            st.markdown("<p style='color:#b4b4b4; font-size:12px; margin-bottom:8px; margin-top:12px;'>Asset Request:</p>", unsafe_allow_html=True)
+            justification = st.text_area(
+                "Asset Request:",
+                placeholder="Describe the asset you need (e.g., Headphone for work calls)...",
+                height=250,
+                key="asset_justification",
+                label_visibility="collapsed"
+            )
 
-        if st.button("Submit Asset Request", type="primary", use_container_width=True, key="submit_asset_req"):
-            if not asset_name.strip():
-                st.error("Please enter the asset name.")
-            elif not justification.strip():
-                st.error("Please provide a justification.")
-            elif not manager_name.strip():
-                st.error("Please enter manager name.")
-            else:
-                from utils.guardrail import check_asset_match
-                is_matched, match_reason = check_asset_match(asset_name, justification.strip())
-                if not is_matched:
-                    st.error(
-                        f" **Asset Mismatch** — Your justification doesn't match **{asset_name}**.\n\n"
-                        f"{match_reason}\n\nPlease correct the asset or justification."
-                    )
+            if st.button("Submit Asset Request", type="primary", use_container_width=True, key="submit_asset_req"):
+                if not justification.strip():
+                    st.error("Please describe the asset you need.")
+                elif not manager_name.strip():
+                    st.error("Please enter manager name for approval.")
                 else:
                     _log(" Guardrail scanning asset request...")
                     from utils.guardrail import guardrail_check
                     guard = guardrail_check(
-                        user_issue=f"Asset Request: {asset_name}. Justification: {justification.strip()}",
+                        user_issue=f"Asset Request: {justification.strip()}",
                         attached_doc_context=f"Manager: {manager_name.strip()}"
                     )
                     if not guard.safe:
@@ -380,7 +365,7 @@ def render_user_portal(username: str):
                     else:
                         _log(" Guardrail: Content cleared")
                         stock = "Pending Review"
-                        _log(f" Asset requested: {asset_name} — {stock}")
+                        _log(f" Asset requested — {stock}")
                         _log(" Creating asset request ticket...")
                         from database.crud import get_session, get_or_create_user as _gcu
                         from database.models import Ticket
@@ -392,8 +377,8 @@ def render_user_portal(username: str):
                             session.add(Ticket(
                                 ticket_id=tid, user_id=user.id,
                                 category="Asset Request",
-                                issue_summary=f"Request {asset_name} (Manager: {manager_name.strip()})",
-                                ai_analysis=f"Justification: {justification.strip()}",
+                                issue_summary=f"Asset Request (Manager: {manager_name.strip()})",
+                                ai_analysis=f"Request Details: {justification.strip()}",
                                 probable_cause=f"Inventory: {stock}",
                                 severity="Medium", confidence=1.0,
                                 status="Pending Manager Approval",
@@ -401,37 +386,62 @@ def render_user_portal(username: str):
                             ))
                         _log(f" Ticket {tid} created (Pending Manager Approval)")
                         st.success(f" Ticket **{tid}** created — Pending Manager Approval")
-                        _add_chat("user", f"I submitted an asset request for {asset_name}.")
+                        _add_chat("user", f"I submitted an asset request.")
                         _add_chat(
                             "assistant",
                             f" **Asset Request Submitted!**\n\n"
-                            f"- **Asset:** {asset_name}\n"
+                            f"- **Request:** {justification.strip()[:100]}...\n"
                             f"- **Manager:** {manager_name.strip()}\n"
                             f"- **Stock Status:** {stock}\n"
                             f"- **Ticket:** {tid} — Pending Manager Approval",
                             agent_step=" Asset Request"
                         )
-                        st.session_state.pop("asset_name_input", None)
+                        st.session_state.asset_manager_name = ""
+                        st.session_state.asset_justification = ""
                         st.rerun()
+
+    # ── MIDDLE COLUMN — AI Console ───────────────────────────────────────────
+    with col_middle:
+        console_container = st.container(height=500, border=True)
+        with console_container:
+            stage = st.session_state.portal_stage
+            is_live = stage in ["classifying", "generating_resolution"]
+            badge = "<span style='background:#10b981;color:white;font-size:10px;padding:2px 7px;border-radius:10px;font-weight:600;'> LIVE</span>" if is_live else "<span style='background:#3f3f3f;color:#b4b4b4;font-size:10px;padding:2px 7px;border-radius:10px;'> IDLE</span>"
+
+            console_placeholder = st.empty()
+            logs = st.session_state.get("console_logs", [])
+            log_html = _render_console_logs_html(logs)
+            console_html = f"""
+            <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:14px; height:460px; overflow-y:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid #2f2f2f; padding-bottom:0px;">
+                    <span style="color:#ececec; font-weight:700; font-size:14px; font-family:monospace;"> AI Console</span>
+                    {badge}
+                </div>
+                <div style="line-height:1.5;">
+                    {log_html}
+                </div>
+            </div>
+            """
+            console_placeholder.markdown(console_html, unsafe_allow_html=True)
+            st.session_state.console_placeholder = console_placeholder
+            st.session_state.console_badge = badge
 
     # ── LEFT COLUMN — Chat Interface ──────────────────────────────────────────
     with col_left:
+        chat_container = st.container(height=500, border=True)
+        with chat_container:
 
-        if not is_index_ready():
-            st.warning(
-                " **Knowledge Base Not Built Yet** — Run `python rag/ingest.py` to build the FAISS index.",
-                icon=None,
-            )
-
-        # -- Chat scroll area: 320px fills ~44% of viewport, input bar below --
-        # Nav (52px) + Chat (320px) + divider+shortcuts+attach+input+btns (~340px) = 712px ✓
-        chat_area = st.container(height=320, border=False)
-        with chat_area:
+            if not is_index_ready():
+                st.warning(
+                    " **Knowledge Base Not Built Yet** — Run `python rag/ingest.py` to build the FAISS index.",
+                    icon=None,
+                )
+            # Chat messages
             if not st.session_state.chat_history:
                 st.markdown(
                     """
                     <div style="display:flex; flex-direction:column; align-items:center;
-                                justify-content:center; height:260px; color:#4f4f4f; text-align:center;">
+                                justify-content:center; height:400px; color:#4f4f4f; text-align:center;">
                         <div style="font-size:40px; margin-bottom:12px;"></div>
                         <div style="font-size:16px; font-weight:600; color:#6f6f6f;">ITAssist AI — Service Desk Copilot</div>
                         <div style="font-size:13px; color:#4f4f4f; margin-top:6px;">Describe your IT issue below or pick a common issue shortcut</div>
@@ -476,10 +486,8 @@ def render_user_portal(username: str):
             _render_done_stage()
             return
 
-        # == BOTTOM INPUT BAR ================================================
-        # Separator
-        st.markdown('<hr style="border:none; border-top:1px solid #2f2f2f; margin:8px 0 4px 0;">', unsafe_allow_html=True)
-
+    # == BOTTOM INPUT BAR (Pinned to bottom of screen) =======================
+    with st.bottom:
         # -- Contextual action buttons (self_resolve stage) -------------------
         if stage == "self_resolve":
             _render_self_resolve_actions(username)
@@ -500,17 +508,91 @@ def render_user_portal(username: str):
                 with chip_cols[idx]:
                     if st.button(label, key=f"shortcut_{idx}", use_container_width=True):
                         st.session_state.bottom_input = full_text
+                        st.session_state.bottom_input_area = full_text
                         st.rerun()
 
         # -- Unified Bottom Input Bar -----------------------------------------
         if stage in ("idle", "answering_questions"):
             _render_bottom_input_bar(username, stage)
 
+        st.markdown(
+            """
+            <style>
+            /* Center the Architecture button */
+            .st-key-arch_btn button {
+                background: transparent !important;
+                border: none !important;
+                color: #64748b !important;
+                font-size: 12px !important;
+                box-shadow: none !important;
+                padding: 0px !important;
+                min-height: auto !important;
+                line-height: 1.2 !important;
+            }
+            .st-key-arch_btn button:hover {
+                color: #ececec !important;
+                background: transparent !important;
+            }
+            .st-key-arch_btn div.stButton {
+                display: flex !important;
+                justify-content: center !important;
+                width: 100% !important;
+            }
+            .st-key-arch_btn {
+                width: 100% !important;
+                margin-top: 4px !important;
+                margin-bottom: 0px !important;
+            }
+            div[data-testid="stBottom"], 
+            div[data-testid="stBottom"] > div, 
+            div[data-testid="stBottom"] div[class*="st-emotion-cache-"] {
+                padding: 0px !important;
+                padding-bottom: 0px !important;
+                margin-bottom: 0px !important;
+            }
+            
+            /* Make the bottom section controls more compact */
+            div[data-testid="stBottom"] div[data-testid="column"] {
+                gap: 6px !important;
+            }
+            div[data-testid="stBottom"] .stTextArea {
+                margin-bottom: -5px !important;
+            }
+            div[data-testid="stBottom"] .streamlit-expanderHeader {
+                padding: 3px 6px !important;
+                font-size: 12px !important;
+                min-height: 0px !important;
+            }
+            div[data-testid="stBottom"] .streamlit-expanderContent {
+                padding: 6px !important;
+            }
+            div[data-testid="stBottom"] hr {
+                margin: 4px 0 !important;
+            }
+            div[data-testid="stBottom"] .stButton button {
+                padding-top: 0px !important;
+                padding-bottom: 0px !important;
+                font-size: 13px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True
+        )
+        if st.button("Architecture ⚙", key="arch_btn"):
+            _show_arch_dialog()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────────────────────
 # Bottom Input Bar
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _on_bottom_submit():
+    raw_val = st.session_state.get("bottom_input_area", "").strip()
+    if raw_val:
+        st.session_state.pending_bottom_msg = raw_val
+    st.session_state.bottom_input = ""
+    st.session_state.bottom_input_area = ""
+
 
 def _render_bottom_input_bar(username: str, stage: str):
     send_label = " Analyze My Issue" if stage == "idle" else "→ Submit Answer"
@@ -550,25 +632,27 @@ def _render_bottom_input_bar(username: str, stage: str):
 
     col_send, col_reset = st.columns([4, 1])
     with col_send:
-        send = st.button(send_label, type="primary", use_container_width=True, key="bottom_send_btn")
+        send = st.button(
+            send_label, 
+            type="primary", 
+            use_container_width=True, 
+            key="bottom_send_btn",
+            on_click=_on_bottom_submit
+        )
     with col_reset:
         if st.button(" Reset", use_container_width=True, key="bottom_reset_btn"):
             _reset_portal()
             st.rerun()
 
-    if send:
-        text = user_input.strip()
-        if not text:
-            st.error("Please type a message before sending.")
-            return
-
-        # Clear the input
-        st.session_state.bottom_input = ""
-
+    pending = st.session_state.get("pending_bottom_msg", "").strip()
+    if pending:
+        st.session_state.pending_bottom_msg = ""
         if stage == "idle":
-            _handle_idle_submit(username, text)
+            _handle_idle_submit(username, pending)
         elif stage == "answering_questions":
-            _handle_answer_submit(text)
+            _handle_answer_submit(pending)
+    elif send:
+        st.error("Please type a message before sending.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -626,6 +710,11 @@ def _handle_answer_submit(text: str):
 
 def _run_classifying_stage(username: str):
     user_message = st.session_state.get("user_issue", "")
+    # Align truncation to avoid truncation bypass in safety scan vs main agent
+    if len(user_message) > 3000:
+        user_message = user_message[:3000] + "\n[...content truncated...]"
+        st.session_state.user_issue = user_message
+
     attached_context = st.session_state.get("attached_files_context", "")
 
     with st.spinner(" Checking safety & searching knowledge base..."):
@@ -710,6 +799,10 @@ def _run_generating_resolution_stage():
         return
 
     user_answers = st.session_state.get("user_answers_input", "")
+    # Align truncation limits to avoid truncation bypass
+    if len(user_answers) > 3000:
+        user_answers = user_answers[:3000] + "\n[...content truncated...]"
+        st.session_state.user_answers_input = user_answers
 
     with st.spinner(" Checking answer safety..."):
         _log(" Guardrail scanning user answers...")
@@ -733,6 +826,17 @@ def _run_generating_resolution_stage():
             )
             st.session_state.agent_state = updated_state
             chat_reply = updated_state.get("analysis_text", "")
+
+            # Output Moderation Check (Layer 3) on generated response text
+            from utils.guardrail import guardrail_output_check
+            output_guard = guardrail_output_check(chat_reply)
+            if not output_guard.safe:
+                _log(f" Output Guardrail BLOCKED: {output_guard.reason[:60]}")
+                st.error(f" **Safety Violation Blocked:** {output_guard.reason}")
+                st.session_state.portal_stage = "answering_questions"
+                st.rerun()
+                return
+
             _log(" Final resolution ready!")
             _add_chat(
                 "assistant",
@@ -764,10 +868,18 @@ def _render_self_resolve_actions(username: str):
         if st.button(" Draft Support Email", use_container_width=True, key="draft_email_btn"):
             with st.spinner("Writing email draft..."):
                 from agents.graph import draft_support_email
-                st.session_state.email_draft = draft_support_email(
+                draft = draft_support_email(
                     user_message=agent_state.get("user_message", ""),
                     chat_reply=chat_reply
                 )
+                # Output Moderation Check (Layer 3) on email draft
+                from utils.guardrail import guardrail_output_check
+                output_guard = guardrail_output_check(draft)
+                if not output_guard.safe:
+                    _log(f" Output Guardrail BLOCKED email: {output_guard.reason[:60]}")
+                    st.error(f" **Safety Warning:** Generated support email contains unsafe content and was blocked: {output_guard.reason}")
+                else:
+                    st.session_state.email_draft = draft
             st.rerun()
 
     if st.session_state.get("email_draft"):
@@ -814,7 +926,7 @@ def _render_ticket_preview_inline(username: str):
 
     st.markdown(
         """
-        <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:16px; margin:12px 0 8px 0;">
+        <div style="background:#171717; border:1px solid #2f2f2f; border-radius:12px; padding:0px; margin:12px 0 8px 0;">
             <div style="font-size:15px; font-weight:700; color:#ececec; margin-bottom:4px;"> Support Ticket Preview</div>
             <div style="color:#b4b4b4; font-size:12px;">Review the AI-generated ticket. You can edit the summary before approving.</div>
         </div>
