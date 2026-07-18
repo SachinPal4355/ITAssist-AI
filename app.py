@@ -223,7 +223,7 @@ _initialize_app()
 
 # ── Session State ─────────────────────────────────────────────────────────────
 if "app_username" not in st.session_state or not st.session_state.app_username:
-    st.session_state.app_username = "Sachin"
+    st.session_state.app_username = "user"
 if "app_role" not in st.session_state:
     st.session_state.app_role = "user"
 if "app_page" not in st.session_state:
