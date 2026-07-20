@@ -210,13 +210,27 @@ def _initialize_app():
     from database.crud import seed_knowledge_articles
     init_db()
     seed_knowledge_articles()
-    # Pre-warm the embedding model so the first RAG search is instant
+    
+    # Try to load the vector store; if missing/corrupt, auto-rebuild it dynamically
     try:
-        from rag.retriever import is_index_ready, _get_embeddings
-        if is_index_ready():
-            _get_embeddings()  # Load sentence-transformers model into memory now
-    except Exception:
-        pass
+        from rag.retriever import _get_vectorstore, _get_embeddings
+        vs = _get_vectorstore()
+        if vs is None:
+            print("FAISS index is missing or corrupt on this environment. Rebuilding index from local documents...")
+            from rag.ingest import ingest
+            # Build without requiring the large external PDF if it's missing
+            ingest()
+        else:
+            # Pre-warm embeddings
+            _get_embeddings()
+    except Exception as e:
+        print(f"Failed to load or initialize FAISS index: {e}. Rebuilding index...")
+        try:
+            from rag.ingest import ingest
+            ingest()
+        except Exception as ie:
+            print(f"Failed to ingest FAISS index: {ie}")
+            
     return True
 
 _initialize_app()

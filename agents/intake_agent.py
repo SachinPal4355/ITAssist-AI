@@ -31,7 +31,7 @@ LOCAL_KEYWORDS = {
     "Hardware": ["driver", "usb", "monitor", "display", "screen", "keyboard", "mouse", "battery", "charge", "power", "hardware", "port"],
     "Backup / Storage": ["backup", "vss", "shadow copy", "restore point", "disk", "drive", "volume", "chkdsk", "hard drive"],
     "Printer": ["printer", "print", "spooler", "queue", "offline", "paper", "driver isolation", "error 0x00000709", "toner"],
-    "Security / BitLocker": ["bitlocker", "tpm", "encrypt", "recovery key", "recovery password", "defender", "antivirus", "virus", "malware", "firewall", "blocked"],
+    "Security / BitLocker": ["bitlocker", "tpm", "encrypt", "recovery key", "recovery password", "bitlocker key", "encryption key", "recovery", "defender", "antivirus", "virus", "malware", "firewall", "blocked"],
     "Windows Update": ["windows update", "wsus", "kb", "update stuck", "cumulative", "error 0x8007", "servicing stack"],
     "Remote Desktop": ["rdp", "remote desktop", "teams call", "teams meeting", "call drop", "quick assist", "screen sharing", "wake on lan", "wol"],
     "Wireless / WiFi": ["wifi", "wi-fi", "wireless", "802.1x", "wpa2", "wpa3", "radius", "nps", "ssid"],

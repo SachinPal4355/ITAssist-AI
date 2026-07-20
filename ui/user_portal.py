@@ -715,8 +715,80 @@ def _run_classifying_stage(username: str):
         user_message = user_message[:3000] + "\n[...content truncated...]"
         st.session_state.user_issue = user_message
 
-    attached_context = st.session_state.get("attached_files_context", "")
+    # 1. Try local category classification first
+    from agents.intake_agent import classify_issue_locally
+    local_result = classify_issue_locally(user_message)
+    
+    # 2. Check if we can perform a direct local SOP resolution immediately (0 Groq calls)
+    is_direct_local = False
+    if local_result and local_result.get("confidence", 0.0) >= 0.80:
+        category = local_result.get("category", "Other")
+        if category != "Other":
+            from rag.retriever import parse_sop_file_locally
+            local_diag = parse_sop_file_locally(category, user_message)
+            if local_diag and local_diag.get("self_resolution_steps"):
+                is_direct_local = True
+                cat = category
+                conf = local_result["confidence"]
+                icon = CATEGORY_ICONS.get(cat, "")
+                steps = local_diag["self_resolution_steps"]
 
+    if is_direct_local:
+        # Bypasses all Groq calls! Run only the local Layer 1 guardrail checks
+        from utils.guardrail import decode_obfuscated_text, check_credentials_deterministic
+        decoded = decode_obfuscated_text(user_message)
+        has_creds, cred_reason = check_credentials_deterministic(decoded)
+        if has_creds:
+            _log(f" Local Guardrail BLOCKED: {cred_reason}")
+            st.error(f" **Guardrail blocked this request**\n\n**Reason:** {cred_reason}")
+            st.session_state.portal_stage = "idle"
+            st.rerun()
+            return
+            
+        steps_str = "\n".join([f"Step {i+1}: {s}" for i, s in enumerate(steps)])
+        
+        # Build initial AgentState locally to seed the state machine
+        agent_state = {
+            "user_message": user_message,
+            "session_id": st.session_state.session_id,
+            "category": cat,
+            "intake_confidence": conf,
+            "issue_summary": user_message[:100],
+            "sop_context": local_diag.get("analysis", "Local SOP Match"),
+            "diagnostic_questions": "DIRECT_RESOLUTION",
+            "user_answers": "",
+            "analysis_text": steps_str,
+            "problem_title": local_diag.get("problem", cat),
+            "probable_cause": local_diag.get("probable_cause", "Matched local SOP"),
+            "self_resolution_steps": [steps_str],
+            "conversation_history": [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": f"**Here are the recommended troubleshooting steps from the local SOP:**\n\n{steps_str}"}
+            ],
+            "ticket_id": "",
+            "resolution_notes": "",
+            "direct_local": True,
+        }
+        st.session_state.agent_state = agent_state
+        
+        _add_chat(
+            "assistant",
+            f"**Issue Classified Locally:** {icon} **{cat}** (confidence: {conf:.0%})\n\n"
+            f"**Knowledge Base Match:** Direct SOP resolution loaded locally (0 API Calls).",
+            agent_step=" Local Triage"
+        )
+        _log(" Direct local SOP resolution loaded (0 API Calls)")
+        _add_chat(
+            "assistant",
+            f"**Here are the recommended troubleshooting steps from the local SOP:**\n\n{steps_str}",
+            agent_step=" Service Desk Copilot Response"
+        )
+        st.session_state.portal_stage = "self_resolve"
+        st.rerun()
+        return
+
+    # 3. Fallback to normal flow if not direct local: runs FAISS and full Groq Guardrails
+    attached_context = st.session_state.get("attached_files_context", "")
     with st.spinner(" Checking safety & searching knowledge base..."):
         _log(" Scanning FAISS knowledge base...")
         from rag.retriever import search as rag_search
@@ -775,13 +847,44 @@ def _run_classifying_stage(username: str):
             )
 
             questions = agent_state.get("diagnostic_questions", "")
-            _log(" Cross-questions generated — awaiting user answers")
-            _add_chat(
-                "assistant",
-                f"**To verify the exact cause, please answer these diagnostic questions:**\n\n{questions}",
-                agent_step=" Diagnostic Questions",
-            )
-            st.session_state.portal_stage = "answering_questions"
+            direct_local = agent_state.get("direct_local", False)
+
+            if questions == "DIRECT_RESOLUTION" or direct_local:
+                # Direct local resolution path: fetch steps directly from SOP
+                from rag.retriever import parse_sop_file_locally
+                user_issue_text = st.session_state.get("user_issue", "")
+                local_diag = parse_sop_file_locally(cat, user_issue_text)
+                if local_diag:
+                    steps = local_diag.get("self_resolution_steps", [])
+                    steps_str = "\n".join([f"Step {i+1}: {s}" for i, s in enumerate(steps)])
+                    
+                    # Store details in state for the dashboard and self-resolution views
+                    agent_state["analysis_text"] = steps_str
+                    agent_state["self_resolution_steps"] = [steps_str]
+                    agent_state["problem_title"] = local_diag.get("problem", cat)
+                    agent_state["probable_cause"] = local_diag.get("probable_cause", "Matched local SOP")
+                    
+                    _log(" Direct local SOP resolution loaded")
+                    _add_chat(
+                        "assistant",
+                        f"**Here are the recommended troubleshooting steps from the local SOP:**\n\n{steps_str}",
+                        agent_step=" Service Desk Copilot Response"
+                    )
+                else:
+                    _add_chat(
+                        "assistant",
+                        "Matched category locally but failed to retrieve specific SOP resolution steps.",
+                        agent_step=" Intake Agent"
+                    )
+                st.session_state.portal_stage = "self_resolve"
+            else:
+                _log(" Cross-questions generated — awaiting user answers")
+                _add_chat(
+                    "assistant",
+                    f"**To verify the exact cause, please answer these diagnostic questions:**\n\n{questions}",
+                    agent_step=" Diagnostic Questions",
+                )
+                st.session_state.portal_stage = "answering_questions"
 
         except Exception as e:
             _log(f" Agent error: {str(e)[:50]}")
@@ -904,14 +1007,23 @@ def _render_self_resolve_actions(username: str):
             st.rerun()
 
     with col2:
-        if st.button(" No — Create Ticket", use_container_width=True, key="not_resolved_btn"):
-            _add_chat("user", " I'd like to create a support ticket.")
-            _add_chat(
-                "assistant",
-                "Certainly! I've prepared a ticket preview for you. Please review and approve it below.",
-                agent_step=" Ticket Creator",
-            )
-            st.session_state.portal_stage = "ticket_preview"
+        direct_local = agent_state.get("direct_local", False)
+        btn_label = " No — Still Having Issues" if direct_local else " No — Create Ticket"
+        
+        if st.button(btn_label, use_container_width=True, key="not_resolved_btn"):
+            if direct_local:
+                _add_chat("user", "No, the local steps didn't resolve my issue.")
+                st.session_state.user_answers_input = "Local SOP troubleshooting steps failed to resolve the issue. Please suggest standard dynamic diagnostics and provide alternative resolution."
+                agent_state["direct_local"] = False
+                st.session_state.portal_stage = "generating_resolution"
+            else:
+                _add_chat("user", " I'd like to create a support ticket.")
+                _add_chat(
+                    "assistant",
+                    "Certainly! I've prepared a ticket preview for you. Please review and approve it below.",
+                    agent_step=" Ticket Creator",
+                )
+                st.session_state.portal_stage = "ticket_preview"
             st.rerun()
 
 

@@ -32,6 +32,7 @@ class AgentState(TypedDict):
     conversation_history: list[dict]
     ticket_id: str
     resolution_notes: str      # Stores the email draft / supportive response
+    direct_local: bool         # Flag to track direct local SOP resolution
 
 
 def _build_llm(temperature: float = 0.2, max_tokens: int = 1024) -> ChatGroq:
@@ -49,39 +50,70 @@ def run_intake_and_knowledge(user_message: str, session_id: str) -> AgentState:
     """
     Step 1: User problem input -> Local FAISS search -> Generate dynamic cross-questions.
     """
+    # Extract clean query if user_message is the augmented message
+    clean_query = user_message.split("\n\n--- CONTEXT ---\n")[0] if "\n\n--- CONTEXT ---\n" in user_message else user_message
+
     # 1. Intake classification
-    classification = classify_issue(user_message)
+    classification = classify_issue(clean_query)
     category = classification.get("category", "Other")
     confidence = classification.get("confidence", 0.5)
 
     # 2. Perform semantic search (RAG) on local FAISS index
-    rag_context = search_text(user_message)
+    rag_context = search_text(clean_query)
 
-    # 3. Call Groq to generate 1-2 targeted diagnostic cross-questions based on SOP
-    llm = _build_llm(temperature=0.3)
-    system_prompt = (
-        "You are an IT support intake assistant. Analyze the user problem and the matched internal documentation findings. "
-        "Your task is to generate 1 or 2 targeted diagnostic cross-questions to help narrow down the root cause and get specific details (e.g. error codes, OS, specific settings, symptoms).\n"
-        "Keep the questions highly direct, short, conversational, and easy for a non-technical user. Ask ONLY the questions, do not add introductory greetings like 'Sure' or concluding notes."
-    )
+    # Check confidence levels for local vs. dynamic routing
+    direct_local = False
+    
+    if confidence >= 0.80 and category != "Other":
+        from rag.retriever import parse_sop_file_locally
+        local_diag = parse_sop_file_locally(category, clean_query)
+        if local_diag and local_diag.get("self_resolution_steps"):
+            direct_local = True
+            questions = "DIRECT_RESOLUTION"
+        else:
+            # Force normal flow if no local SOP matching steps exist
+            confidence = 0.79
 
-    prompt = f"""User problem: {user_message}
+    if not direct_local:
+        if confidence < 0.30:
+            from rag.retriever import parse_sop_file_locally
+            local_diag = parse_sop_file_locally(category, clean_query)
+            if local_diag and local_diag.get("self_resolution_steps"):
+                steps_str = "\n".join([f"- {s}" for s in local_diag["self_resolution_steps"]])
+            else:
+                steps_str = "- Restart the device.\n- Check internet connectivity.\n- Verify system and network configuration."
+            
+            questions = (
+                "I'm not completely sure I understand the issue. Could you please explain it briefly with more details?\n\n"
+                "In the meantime, you can try these standard troubleshooting steps:\n"
+                f"{steps_str}"
+            )
+        else:
+            # 3. Call Groq to generate 1-2 targeted diagnostic cross-questions based on SOP
+            llm = _build_llm(temperature=0.3)
+            system_prompt = (
+                "You are an IT support intake assistant. Analyze the user problem and the matched internal documentation findings. "
+                "Your task is to generate 1 or 2 targeted diagnostic cross-questions to help narrow down the root cause and get specific details (e.g. error codes, OS, specific settings, symptoms).\n"
+                "Keep the questions highly direct, short, conversational, and easy for a non-technical user. Ask ONLY the questions, do not add introductory greetings like 'Sure' or concluding notes."
+            )
+
+            prompt = f"""User problem: {user_message}
 Matched SOP Findings: {rag_context}"""
 
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=prompt),
-    ]
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=prompt),
+            ]
 
-    try:
-        response = llm.invoke(messages)
-        questions = response.content.strip()
-    except Exception as e:
-        print(f"Failed to generate dynamic questions via Groq: {e}")
-        # Local fallback questions based on category
-        from agents.troubleshoot_agent import get_local_category_questions
-        fallback_questions = get_local_category_questions(category)
-        questions = "\n".join([f"- {q}" for q in fallback_questions])
+            try:
+                response = llm.invoke(messages)
+                questions = response.content.strip()
+            except Exception as e:
+                print(f"Failed to generate dynamic questions via Groq: {e}")
+                # Local fallback questions based on category
+                from agents.troubleshoot_agent import get_local_category_questions
+                fallback_questions = get_local_category_questions(category)
+                questions = "\n".join([f"- {q}" for q in fallback_questions])
 
     state: AgentState = {
         "user_message": user_message,
@@ -102,6 +134,7 @@ Matched SOP Findings: {rag_context}"""
         ],
         "ticket_id": "",
         "resolution_notes": "",
+        "direct_local": direct_local,
     }
     return state
 

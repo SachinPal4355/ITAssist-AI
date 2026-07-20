@@ -36,11 +36,15 @@ def _get_vectorstore() -> FAISS | None:
         index_file = os.path.join(FAISS_INDEX_PATH, "index.faiss")
         if not os.path.exists(index_file):
             return None
-        _vectorstore = FAISS.load_local(
-            FAISS_INDEX_PATH,
-            _get_embeddings(),
-            allow_dangerous_deserialization=True,
-        )
+        try:
+            _vectorstore = FAISS.load_local(
+                FAISS_INDEX_PATH,
+                _get_embeddings(),
+                allow_dangerous_deserialization=True,
+            )
+        except Exception as e:
+            print(f"Error loading local FAISS index: {e}")
+            _vectorstore = None
     return _vectorstore
 
 
@@ -205,10 +209,10 @@ def parse_sop_file_locally(category: str, query: str) -> dict | None:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read()
             
-        # Split file into individual sections using header dashed or equal lines
-        blocks = re.split(r'[-=]{30,}\s*\n(?:DIAGNOSTIC STEP|SECTION|ISSUE)\s*\d+:\s*(.*?)\n\s*[-=]{30,}', content, flags=re.I)
+        # Split file into individual sections, capturing the header type and title
+        blocks = re.split(r'[-=]{30,}\s*\n(DIAGNOSTIC STEP|SECTION|ISSUE)\s*\d+:\s*(.*?)\n\s*[-=]{30,}', content, flags=re.I)
         
-        if len(blocks) < 3:
+        if len(blocks) < 4:
             return None
             
         best_title = f"{category} Issue"
@@ -216,24 +220,43 @@ def parse_sop_file_locally(category: str, query: str) -> dict | None:
         best_score = -1
         query_words = set(re.findall(r'\b\w+\b', query.lower()))
         
-        # Iterate in pairs: blocks[i] is title, blocks[i+1] is body
-        for i in range(1, len(blocks), 2):
-            title = blocks[i].strip()
-            body = blocks[i+1] if i+1 < len(blocks) else ""
+        # Iterate in triplets: blocks[i] is type, blocks[i+1] is title, blocks[i+2] is body
+        for i in range(1, len(blocks), 3):
+            header_type = blocks[i].strip().upper()
+            title = blocks[i+1].strip()
+            body = blocks[i+2] if i+2 < len(blocks) else ""
             
-            combined_text = f"{title}\n{body}"
-            text_words = set(re.findall(r'\b\w+\b', combined_text.lower()))
-            overlap = len(query_words.intersection(text_words))
+            # Skip general overview sections
+            if header_type == "SECTION":
+                continue
+                
+            title_words = set(re.findall(r'\b\w+\b', title.lower()))
+            body_words = set(re.findall(r'\b\w+\b', body.lower()))
             
-            if overlap > best_score:
-                best_score = overlap
+            title_overlap = len(query_words.intersection(title_words))
+            body_overlap = len(query_words.intersection(body_words))
+            
+            # Give 3x weight to title matches
+            score = (title_overlap * 3) + body_overlap
+            
+            if score > best_score and score > 0:
+                best_score = score
                 best_title = title
                 best_body = body
                 
         if best_score == -1:
-            # Fallback to the first step block
-            best_title = blocks[1].strip()
-            best_body = blocks[2] if len(blocks) > 2 else ""
+            # Fallback to the first actual troubleshooting block
+            fallback_found = False
+            for i in range(1, len(blocks), 3):
+                header_type = blocks[i].strip().upper()
+                if header_type != "SECTION":
+                    best_title = blocks[i+1].strip()
+                    best_body = blocks[i+2] if i+2 < len(blocks) else ""
+                    fallback_found = True
+                    break
+            if not fallback_found:
+                best_title = blocks[2].strip() if len(blocks) > 2 else f"{category} Issue"
+                best_body = blocks[3] if len(blocks) > 3 else ""
             
         # Parse the matched section:
         # 1. Title
@@ -241,14 +264,27 @@ def parse_sop_file_locally(category: str, query: str) -> dict | None:
         
         # 2. Extract Resolution Steps
         steps = []
-        res_section_match = re.search(r'Resolution Steps[^\n]*?:(.*?)(?:Diagnostic Commands|===|---|\Z)', best_body, re.DOTALL | re.IGNORECASE)
+        res_section_match = re.search(r'(?:Resolution Steps|Resolution)[^\n]*?:(.*?)(?:Diagnostic Commands|PowerShell Cleanup Script|Verification Command|===|---|\Z)', best_body, re.DOTALL | re.IGNORECASE)
         if res_section_match:
             res_text = res_section_match.group(1).strip()
-            # Extract lines starting with a digit like '1.', '2.'
+            current_step = ""
             for line in res_text.split('\n'):
-                line_cleaned = re.sub(r'^\s*\d+\.\s*', '', line).strip()
-                if line_cleaned:
-                    steps.append(line_cleaned)
+                line_stripped = line.strip()
+                if not line_stripped:
+                    continue
+                # Check if it starts with a step number: e.g. "1.", "2."
+                if re.match(r'^\d+\.\s*', line_stripped):
+                    if current_step:
+                        steps.append(current_step)
+                    current_step = re.sub(r'^\d+\.\s*', '', line_stripped)
+                else:
+                    if current_step:
+                        # Indent sub-bullets and code elements cleanly with HTML tags
+                        current_step += f"<br>&nbsp;&nbsp;&nbsp;&nbsp;<code>{line_stripped}</code>" if (line_stripped.startswith("-") or "Get-" in line_stripped or "manage-bde" in line_stripped) else f"<br>{line_stripped}"
+                    else:
+                        current_step = line_stripped
+            if current_step:
+                steps.append(current_step)
         
         # Fallback if no formatted steps
         if not steps:
