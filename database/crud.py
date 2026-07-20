@@ -333,6 +333,19 @@ def get_all_knowledge_articles() -> list[dict]:
         ]
 
 
+def add_knowledge_article(title: str, category: str, filename: str, source_url: str = "", content_preview: str = "") -> None:
+    from database.models import KnowledgeArticle
+    with get_session() as session:
+        article = KnowledgeArticle(
+            title=title,
+            category=category,
+            filename=filename,
+            source_url=source_url,
+            content_preview=content_preview if content_preview else f"Uploaded SOP / reference document: {filename}"
+        )
+        session.add(article)
+
+
 def approve_and_save_solution(ticket_id: str, title: str, category: str, content: str) -> str:
     """Save approved ticket resolution as a Knowledge Base article and resolve the ticket."""
     import os

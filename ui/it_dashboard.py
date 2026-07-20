@@ -35,6 +35,40 @@ def get_cached_resolution(category: str, issue_summary: str, probable_cause: str
     )
 
 
+def check_pdf_relevance_via_groq(sample_text: str) -> tuple[bool, str]:
+    """Verify if the uploaded document text is relevant to IT Infrastructure Troubleshooting."""
+    import os
+    import json
+    from groq import Groq
+    from config.settings import GROQ_API_KEY, GROQ_MODEL
+    
+    key = os.getenv("GROQ_API_KEY") or GROQ_API_KEY
+    client = Groq(api_key=key)
+    
+    system_prompt = (
+        "You are an IT infrastructure auditor. Analyze the following document text sample and determine if the document "
+        "is relevant to IT Infrastructure Troubleshooting, Windows troubleshooting, networking, VPN, printer support, Active Directory, "
+        "or software configuration. "
+        "Respond in strict JSON format: {\"relevant\": true/false, \"reason\": \"brief explanation\"}."
+    )
+    
+    try:
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"Document text sample:\n{sample_text}"}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+            max_tokens=150
+        )
+        result = json.loads(response.choices[0].message.content)
+        return result.get("relevant", False), result.get("reason", "Unknown verification outcome")
+    except Exception as e:
+        return True, f"Bypassed check due to verification error: {e}"
+
+
 def _render_full_ticket_detail_view(ticket_id: str):
     # Back button
     if st.button("← Back to Dashboard", key="back_to_dashboard_btn"):
@@ -403,6 +437,128 @@ def _render_knowledge_base():
         """,
         unsafe_allow_html=True,
     )
+
+    # ── Upload PDF SOP to Knowledge Base ─────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        '<div style="color:#a5b4fc; font-size:16px; font-weight:700; margin-bottom:12px;"> Upload SOP / Reference PDF</div>',
+        unsafe_allow_html=True,
+    )
+    
+    with st.form("kb_upload_form", clear_on_submit=True):
+        uploaded_file = st.file_uploader(
+            "Select troubleshooting PDF file:",
+            type=["pdf"],
+            help="Upload an official vendor guide or local SOP. The PDF will be scanned, chunked, and embedded into the search database."
+        )
+        
+        col_cat, col_title = st.columns(2)
+        with col_cat:
+            categories_list = ["Security / BitLocker", "Performance", "VPN / Remote Access", "Network", "Email", "Access / Permissions", "Software", "Hardware", "Backup / Storage", "Printer", "Windows Update", "Other"]
+            pdf_category = st.selectbox("Category Mapping:", categories_list)
+        with col_title:
+            pdf_title = st.text_input("Document Name / Topic:", placeholder="e.g. Dell Latitude Diagnostic Steps")
+            
+        submit_upload = st.form_submit_button(" Ingest and Index PDF", type="primary")
+        
+        if submit_upload:
+            if not uploaded_file:
+                st.error("Please upload a PDF file first.")
+            elif not pdf_title.strip():
+                st.error("Please provide a name/topic for the document.")
+            else:
+                with st.spinner("Processing PDF: extracting pages and building embeddings..."):
+                    try:
+                        import os
+                        from config.settings import FAISS_INDEX_PATH, EMBEDDING_MODEL
+                        # 1. Save file locally to persist it
+                        dest_dir = os.path.join("rag", "uploaded_documents")
+                        os.makedirs(dest_dir, exist_ok=True)
+                        dest_path = os.path.join(dest_dir, uploaded_file.name)
+                        with open(dest_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                            
+                        # 2. Extract pages using PyPDF
+                        import pypdf
+                        from langchain_core.documents import Document
+                        from langchain_community.vectorstores import FAISS
+                        from langchain_community.embeddings import HuggingFaceEmbeddings
+                        
+                        pdf_reader = pypdf.PdfReader(dest_path)
+                        
+                        # Extract full text from all pages
+                        full_text = ""
+                        for page_num in range(len(pdf_reader.pages)):
+                            page = pdf_reader.pages[page_num]
+                            full_text += page.extract_text() or ""
+                            
+                        # A. DETERMINISTIC SAFETY SCAN ON FULL TEXT (Layer 1 Guardrail check)
+                        from utils.guardrail import decode_obfuscated_text, check_credentials_deterministic
+                        cleaned_full_text = decode_obfuscated_text(full_text)
+                        has_creds, cred_reason = check_credentials_deterministic(cleaned_full_text)
+                        if has_creds:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                            st.error(f"❌ **Security Violation:** The document contains sensitive credentials or API keys and cannot be uploaded.\n\n*Reason:* {cred_reason}")
+                            return
+
+                        # B. GROQ RELEVANCE VERIFICATION (1 API Call with sample of full text)
+                        sample_text = full_text.strip()[:8000] # Take first 8000 characters to capture table of contents, intro, etc.
+                        is_relevant, reason = check_pdf_relevance_via_groq(sample_text)
+                        if not is_relevant:
+                            if os.path.exists(dest_path):
+                                os.remove(dest_path)
+                            st.error(f"❌ **Relevance Verification Failed:** This document does not appear to be related to IT Infrastructure Troubleshooting.\n\n*Reason:* {reason}")
+                            return
+
+                        new_docs = []
+                        for page_num in range(len(pdf_reader.pages)):
+                            page = pdf_reader.pages[page_num]
+                            text = page.extract_text() or ""
+                            if not text.strip():
+                                continue
+                            
+                            # Chunk size matching standard character splitter
+                            chunks = [text[i:i+1000] for i in range(0, len(text), 900)]
+                            for c_idx, chunk in enumerate(chunks):
+                                # Include context category in chunk text to enhance search relevance
+                                enhanced_text = f"Category: {pdf_category} | Title: {pdf_title} | Page {page_num + 1} | Content: {chunk}"
+                                new_docs.append(Document(
+                                    page_content=enhanced_text,
+                                    metadata={
+                                        "source": uploaded_file.name,
+                                        "page": page_num,
+                                        "chunk": c_idx,
+                                        "is_pdf": True,
+                                        "category": pdf_category
+                                    }
+                                ))
+                                
+                        if not new_docs:
+                            st.warning("The PDF appears to be empty or contains scanned images without selectable text.")
+                        else:
+                            # 3. Add to FAISS index
+                            embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+                            if is_index_ready():
+                                db = FAISS.load_local(FAISS_INDEX_PATH, embeddings, allow_dangerous_deserialization=True)
+                                db.add_documents(new_docs)
+                                db.save_local(FAISS_INDEX_PATH)
+                            else:
+                                db = FAISS.from_documents(new_docs, embeddings)
+                                db.save_local(FAISS_INDEX_PATH)
+                                
+                            # 4. Insert dynamic article row in SQLite knowledge_articles table
+                            from database.crud import add_knowledge_article
+                            add_knowledge_article(
+                                title=pdf_title,
+                                category=pdf_category,
+                                filename=uploaded_file.name,
+                                content_preview=f"Uploaded PDF: {uploaded_file.name} ({len(pdf_reader.pages)} pages)"
+                            )
+                            st.success(f"🎉 **{uploaded_file.name}** successfully parsed! {len(new_docs)} semantic chunks added to knowledge base.")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to process PDF: {e}")
 
 
 
